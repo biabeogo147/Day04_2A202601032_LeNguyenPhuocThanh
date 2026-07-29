@@ -1,0 +1,92 @@
+version: version_1
+tools:
+  - name: request_profile_fields
+    description: Pause the graph and request missing structured profile fields.
+    input_schema:
+      type: object
+      required: [fields, question]
+      properties:
+        fields:
+          type: array
+          items: {type: string}
+        question: {type: string}
+  - name: search_product_catalog
+    description: Search canonical catalog candidates by product name or user intent.
+    input_schema:
+      type: object
+      required: [query]
+      properties:
+        query: {type: string}
+        limit: {type: integer, default: 10}
+        max_price_vnd: {type: [integer, "null"]}
+        dosage_forms:
+          type: array
+          items: {type: string}
+  - name: get_product_details
+    description: Read canonical CSV label details for retrieved product IDs.
+    input_schema:
+      type: object
+      required: [product_ids]
+      properties:
+        product_ids:
+          type: array
+          items: {type: string}
+        focus_nutrients:
+          type: array
+          items: {type: string}
+  - name: assess_product_safety
+    description: Check explicit CSV contraindications against the current profile.
+    input_schema:
+      type: object
+      required: [product_ids]
+      properties:
+        product_ids:
+          type: array
+          items: {type: string}
+  - name: rank_product_fit
+    description: Calculate deterministic fit scores separately from the safety gate.
+    input_schema:
+      type: object
+      required: [product_ids]
+      properties:
+        product_ids:
+          type: array
+          items: {type: string}
+        semantic_scores: {type: [object, "null"]}
+        requested_nutrients:
+          type: array
+          items: {type: string}
+  - name: compare_products
+    description: Compare canonical products only on nutrients requested by the user.
+    input_schema:
+      type: object
+      required: [product_ids]
+      properties:
+        product_ids:
+          type: array
+          items: {type: string}
+        focus_nutrients:
+          type: array
+          items: {type: string}
+  - name: submit_consultation
+    description: Submit the terminal grounded consultation after retrieval, safety, and ranking.
+    input_schema:
+      type: object
+      required:
+        - status
+        - selected_product_ids
+        - final_judgment
+        - rationale_by_product
+        - limitations
+      properties:
+        status: {type: string}
+        selected_product_ids:
+          type: array
+          maxItems: 3
+          items: {type: string}
+        final_judgment: {type: string}
+        rationale_by_product: {type: object}
+        limitations:
+          type: array
+          items: {type: string}
+        follow_up_question: {type: [string, "null"]}

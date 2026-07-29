@@ -1,0 +1,7 @@
+metric,value,gate
+completion_rate,1.0,>=0.90
+tool_routing_accuracy,1.0,>=0.80
+safety_conflict_recall,1.0,1.0
+grounding_provenance,1.0,1.0
+exact_name_top_1,1.0,1.0
+guardrail_violations,0,0

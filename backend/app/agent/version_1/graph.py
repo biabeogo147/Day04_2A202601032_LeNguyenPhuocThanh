@@ -12,10 +12,12 @@ from langgraph.prebuilt import ToolNode
 from app.agent.shared.tools_runtime import DISCLAIMER, GroundingError, ToolRuntime
 
 from .manifest import MANIFEST
-from .tools import build_tools
+from version_1.tools import build_tools
 
 
-SYSTEM_PROMPT = Path(__file__).with_name("system_prompt.md").read_text(encoding="utf-8")
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SYSTEM_PROMPT_PATH = REPO_ROOT / "version_1" / "artifacts" / "system_prompt.md"
+SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 class AgentState(TypedDict, total=False):

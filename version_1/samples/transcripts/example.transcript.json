@@ -1,0 +1,23 @@
+{
+  "version": "version_1",
+  "profile_id": "sample-profile",
+  "session_id": "sample-session",
+  "turns": [
+    {
+      "message": "Tư vấn Omega-3",
+      "run": {
+        "id": "sample-run",
+        "status": "completed"
+      },
+      "events": [
+        {
+          "sequence": 1,
+          "type": "public.decision",
+          "payload": {
+            "tools": ["search_product_catalog"]
+          }
+        }
+      ]
+    }
+  ]
+}

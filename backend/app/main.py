@@ -16,6 +16,7 @@ from app.agent.shared.catalog import Catalog
 from app.agent.shared.persistence import Database
 from app.agent.registry import VERSION_REGISTRY
 from app.config import Settings
+from version_1.tools import validate_tool_contract
 from app.schemas import (
     ProfileCreate,
     ProfilePatch,
@@ -71,6 +72,7 @@ def create_app(
     runner: RunController | None = None,
 ) -> FastAPI:
     settings = Settings()
+    validate_tool_contract(VERSION_REGISTRY["version_1"]["manifest"])
     owns_database = database is None
     db = database or Database(settings.app_database_url)
     product_catalog = catalog or Catalog.from_csv(
@@ -85,7 +87,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        (ROOT / "storage").mkdir(parents=True, exist_ok=True)
+        settings.resolved_path(settings.checkpoint_database_path).parent.mkdir(
+            parents=True, exist_ok=True
+        )
         if owns_database:
             await asyncio.to_thread(_upgrade_default_database)
         else:

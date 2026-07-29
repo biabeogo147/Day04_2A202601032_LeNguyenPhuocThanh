@@ -7,11 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 ROOT = Path(__file__).resolve().parents[2]
+VERSION_DIR = ROOT / "version_1"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=ROOT / ".env",
+        env_file=VERSION_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -24,14 +25,16 @@ class Settings(BaseSettings):
     gemini_chat_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
 
-    app_database_url: str = "sqlite+aiosqlite:///./storage/app.db"
+    app_database_url: str = "sqlite+aiosqlite:///./version_1/storage/app.db"
     checkpoint_database_path: Path = Field(
-        default_factory=lambda: ROOT / "storage" / "checkpoints.db"
+        default_factory=lambda: VERSION_DIR / "storage" / "checkpoints.db"
     )
     chroma_persist_directory: Path = Field(
-        default_factory=lambda: ROOT / "storage" / "chroma"
+        default_factory=lambda: VERSION_DIR / "storage" / "chroma"
     )
-    dataset_path: Path = Field(default_factory=lambda: ROOT / "data" / "DataTPCN.csv")
+    dataset_path: Path = Field(
+        default_factory=lambda: ROOT / "shared_data" / "DataTPCN.csv"
+    )
     llm_timeout_seconds: float = 60.0
     tool_timeout_seconds: float = 10.0
 

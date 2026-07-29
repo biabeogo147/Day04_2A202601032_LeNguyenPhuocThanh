@@ -61,6 +61,10 @@
       "Mục tiêu của tôi là hỗ trợ xương, ngân sách 400.000 đồng"
     ],
     "profile": "missing_goal",
+    "resume_patch": {
+      "goals": ["xương khớp"],
+      "budget_max_vnd": 400000
+    },
     "expects": {
       "required_tools": ["request_profile_fields", "search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "interrupt_then_resume": true

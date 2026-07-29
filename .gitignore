@@ -6,6 +6,8 @@ __pycache__/
 .venv/
 storage/
 artifacts/runs/
+version_1/runs/
+version_1/transcripts/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/

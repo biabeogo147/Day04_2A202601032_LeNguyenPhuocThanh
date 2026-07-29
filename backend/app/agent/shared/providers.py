@@ -23,7 +23,8 @@ class ProviderFactory:
         if provider == "openai":
             if not self.settings.openai_api_key.strip():
                 raise ProviderConfigurationError(
-                    "Thiếu OPENAI_API_KEY. Hãy sao chép .env.example thành .env và điền key."
+                    "Thiếu OPENAI_API_KEY. Hãy sao chép version_1/.env.example "
+                    "thành version_1/.env và điền key."
                 )
             return ChatOpenAI(
                 api_key=self.settings.openai_api_key,

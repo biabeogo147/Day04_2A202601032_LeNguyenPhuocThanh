@@ -7,7 +7,7 @@ from app.agent.shared.catalog import Catalog
 from app.agent.shared.tools_runtime import GroundingError, ToolRuntime
 
 
-DATASET = Path(__file__).parents[2] / "data" / "DataTPCN.csv"
+DATASET = Path(__file__).parents[2] / "shared_data" / "DataTPCN.csv"
 
 
 def runtime() -> ToolRuntime:

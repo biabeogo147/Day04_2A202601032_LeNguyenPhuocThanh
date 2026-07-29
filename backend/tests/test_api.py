@@ -8,7 +8,7 @@ from app.agent.shared.persistence import Database
 from app.main import create_app
 
 
-DATASET = Path(__file__).parents[2] / "data" / "DataTPCN.csv"
+DATASET = Path(__file__).parents[2] / "shared_data" / "DataTPCN.csv"
 
 
 class ImmediateRunner:
@@ -92,6 +92,8 @@ def test_profile_session_run_and_sse_replay(tmp_path):
         assert "event: run.started" not in replay
         assert "event: answer.completed" in replay
         assert "id: 2" in replay
+
+    assert not (DATASET.parents[1] / "storage").exists()
 
 
 def test_versions_endpoint_exposes_only_version_1(tmp_path):

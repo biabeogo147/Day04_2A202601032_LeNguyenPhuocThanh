@@ -6,7 +6,7 @@ from app.agent.shared.catalog import Catalog
 from app.agent.shared.vector_store import ChromaProductIndex
 
 
-DATASET = Path(__file__).parents[2] / "data" / "DataTPCN.csv"
+DATASET = Path(__file__).parents[2] / "shared_data" / "DataTPCN.csv"
 
 
 class DeterministicEmbeddings(Embeddings):

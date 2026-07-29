@@ -9,7 +9,7 @@ from app.agent.shared.tools_runtime import ToolRuntime
 from app.agent.version_1.graph import build_graph
 
 
-DATASET = Path(__file__).parents[2] / "data" / "DataTPCN.csv"
+DATASET = Path(__file__).parents[2] / "shared_data" / "DataTPCN.csv"
 
 
 class ScriptedModel:

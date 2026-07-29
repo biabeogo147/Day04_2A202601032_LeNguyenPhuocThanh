@@ -2,7 +2,7 @@
 
 The application is a new FastAPI and React codebase alongside the untouched
 `starter_v0/`. It uses a free-form LangGraph ReAct loop whose tools are deterministic,
-grounded in `data/DataTPCN.csv`, and protected by a final safety validator.
+grounded in `shared_data/DataTPCN.csv`, and protected by a final safety validator.
 
 Stable infrastructure belongs to `backend/app/agent/shared/`. Version-specific prompts,
 tool allowlists, limits, and graph assembly belong to

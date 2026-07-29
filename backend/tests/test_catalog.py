@@ -3,7 +3,7 @@ from pathlib import Path
 from app.agent.shared.catalog import Catalog
 
 
-DATASET = Path(__file__).parents[2] / "data" / "DataTPCN.csv"
+DATASET = Path(__file__).parents[2] / "shared_data" / "DataTPCN.csv"
 
 
 def test_catalog_loads_the_supplied_21_column_dataset():

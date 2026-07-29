@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 
-EVAL_FILE = Path(__file__).parents[1] / "app" / "evals" / "version_1.json"
+EVAL_FILE = Path(__file__).parents[2] / "version_1" / "evals" / "version_1.json"
 
 
 def test_version_1_eval_has_exactly_five_single_and_five_multi_turn_cases():

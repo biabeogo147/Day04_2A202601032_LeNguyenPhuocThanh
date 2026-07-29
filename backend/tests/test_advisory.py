@@ -10,7 +10,7 @@ from app.agent.shared.advisory import (
 from app.agent.shared.catalog import Catalog
 
 
-DATASET = Path(__file__).parents[2] / "data" / "DataTPCN.csv"
+DATASET = Path(__file__).parents[2] / "shared_data" / "DataTPCN.csv"
 
 
 def catalog() -> Catalog:
