@@ -12,17 +12,26 @@ from typing import Any, Callable
 
 try:
     from .agent import ApiAgentClient, TraceEvent, configure_utf8_console
+    from .profile_fields import (
+        canonical_profile_field,
+        canonical_profile_fields,
+        coerce_profile_value,
+        parse_age_group,
+        parse_budget_vnd,
+        parse_list_value,
+        parse_pregnancy_status,
+    )
 except ImportError:  # direct: python version_1/chat.py
     from agent import ApiAgentClient, TraceEvent, configure_utf8_console
-
-
-LIST_FIELDS = {
-    "goals",
-    "conditions",
-    "medications",
-    "allergies",
-    "preferred_dosage_forms",
-}
+    from profile_fields import (
+        canonical_profile_field,
+        canonical_profile_fields,
+        coerce_profile_value,
+        parse_age_group,
+        parse_budget_vnd,
+        parse_list_value,
+        parse_pregnancy_status,
+    )
 TERMINAL_EVENTS = {"answer.completed", "run.failed"}
 
 
@@ -30,14 +39,10 @@ def coerce_profile_patch(
     fields: list[str], answers: dict[str, str]
 ) -> dict[str, Any]:
     patch: dict[str, Any] = {}
-    for field in fields:
-        value = answers[field].strip()
-        if field in LIST_FIELDS:
-            patch[field] = [item.strip() for item in value.split(",") if item.strip()]
-        elif field == "budget_max_vnd":
-            patch[field] = int(value)
-        else:
-            patch[field] = value
+    for raw_field in fields:
+        field = canonical_profile_field(raw_field)
+        value = answers.get(raw_field, answers.get(field, ""))
+        patch[field] = coerce_profile_value(field, value)
     return patch
 
 
@@ -65,7 +70,11 @@ async def run_chat_turn(
                 event_sink(event)
             if event.type == "profile.required":
                 raw_fields = event.payload.get("fields", [])
-                fields = [str(field) for field in raw_fields] if isinstance(raw_fields, list) else []
+                fields = (
+                    canonical_profile_fields(str(field) for field in raw_fields)
+                    if isinstance(raw_fields, list)
+                    else []
+                )
                 question = str(event.payload.get("question", "Bổ sung thông tin hồ sơ"))
                 answers = {
                     field: answer_provider(field, question)
@@ -127,20 +136,38 @@ def write_transcript(
 
 
 def _new_profile_from_input() -> dict[str, Any]:
+    def prompt_value(prompt: str, parser: Callable[[str], Any], default: str) -> Any:
+        while True:
+            raw = input(prompt).strip() or default
+            try:
+                return parser(raw)
+            except ValueError as exc:
+                print(f"Giá trị không hợp lệ: {exc}")
+
     def values(prompt: str) -> list[str]:
-        return [item.strip() for item in input(prompt).split(",") if item.strip()]
+        return parse_list_value(input(prompt))
 
     return {
         "display_name": input("Tên profile: ").strip() or "CLI user",
-        "age_group": input("Nhóm tuổi [adult]: ").strip() or "adult",
+        "age_group": prompt_value(
+            "Tuổi hoặc nhóm tuổi [adult]: ",
+            parse_age_group,
+            "adult",
+        ),
         "goals": values("Mục tiêu (cách nhau bằng dấu phẩy): "),
         "conditions": values("Bệnh nền: "),
         "medications": values("Thuốc đang dùng: "),
         "allergies": values("Dị ứng: "),
-        "pregnancy_status": (
-            input("Thai/cho con bú [not_applicable]: ").strip() or "not_applicable"
+        "pregnancy_status": prompt_value(
+            "Thai/cho con bú [not_applicable]: ",
+            parse_pregnancy_status,
+            "not_applicable",
         ),
-        "budget_max_vnd": int(input("Ngân sách tối đa [500000]: ").strip() or "500000"),
+        "budget_max_vnd": prompt_value(
+            "Ngân sách tối đa [500000]: ",
+            parse_budget_vnd,
+            "500000",
+        ),
         "preferred_dosage_forms": values("Dạng bào chế ưu tiên: "),
     }
 

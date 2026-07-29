@@ -156,3 +156,69 @@ async def test_run_case_uses_one_session_for_all_multi_turn_messages():
     assert client.messages == [("s1", "Lượt một"), ("s1", "Lượt hai")]
     assert result["completed"] is True
     assert result["routing_pass"] is True
+
+
+class InterruptingEvalClient(ScriptedEvalClient):
+    def __init__(self):
+        super().__init__()
+        self.stream_count = 0
+        self.patches = []
+        self.resumes = []
+
+    async def stream_events(self, run_id, *, last_event_id=0):
+        self.stream_count += 1
+        if self.stream_count == 1:
+            yield TraceEvent(
+                1,
+                "profile.required",
+                {
+                    "fields": ["nhóm tuổi", "mục tiêu", "bệnh nền"],
+                    "question": "Bổ sung hồ sơ",
+                },
+            )
+            return
+        yield TraceEvent(
+            2, "tool.requested", {"tool": "search_product_catalog"}
+        )
+        yield TraceEvent(
+            3, "tool.requested", {"tool": "assess_product_safety"}
+        )
+        yield TraceEvent(4, "tool.requested", {"tool": "rank_product_fit"})
+        yield TraceEvent(5, "tool.requested", {"tool": "submit_consultation"})
+        yield TraceEvent(6, "answer.completed", {"status": "answered"})
+
+    async def patch_profile(self, profile_id, patch):
+        self.patches.append(patch)
+        return {"id": profile_id, **patch}
+
+    async def resume_run(self, run_id, *, response):
+        self.resumes.append(response)
+        return {"id": run_id, "status": "running"}
+
+
+async def test_eval_uses_fixture_when_unplanned_profile_interrupt_occurs():
+    client = InterruptingEvalClient()
+    case = {
+        "id": "single_goal_search",
+        "profile": "adult_general",
+        "query": "Tôi muốn hỗ trợ sức khỏe tim mạch",
+        "expects": {
+            "required_tools": [
+                "search_product_catalog",
+                "assess_product_safety",
+                "rank_product_fit",
+                "submit_consultation",
+            ]
+        },
+    }
+
+    result = await run_case(client, case, provider="openai")
+
+    assert result["completed"] is True
+    assert client.patches == [
+        {
+            "age_group": "adult",
+            "goals": ["tim mạch"],
+            "conditions": [],
+        }
+    ]

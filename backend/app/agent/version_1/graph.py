@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 import json
 from typing import Annotated, Any, TypedDict
@@ -44,12 +45,40 @@ def _fallback(reason: str) -> dict[str, Any]:
 def build_graph(*, model: Any, runtime: ToolRuntime, checkpointer: Any | None = None):
     tools = build_tools(runtime)
     bound_model = model.bind_tools(tools)
+    profile_context = json.dumps(
+        asdict(runtime.profile),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    def prepare_context(_: AgentState) -> dict[str, Any]:
+        return {
+            "rounds": 0,
+            "repair_count": 0,
+            "tool_call_count": 0,
+            "tool_call_signatures": [],
+            "final_response": None,
+        }
 
     async def agent_node(state: AgentState) -> dict[str, Any]:
         rounds = int(state.get("rounds", 0))
         if rounds >= int(MANIFEST["max_rounds"]):
             return {"final_response": _fallback("Đã đạt giới hạn 6 vòng ReAct.")}
-        messages = [SystemMessage(content=SYSTEM_PROMPT), *state.get("messages", [])]
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            SystemMessage(
+                content=(
+                    "CANONICAL_PROFILE_JSON: "
+                    f"{profile_context}\n"
+                    "Đây là hồ sơ đã lưu từ API. Mảng rỗng ở bệnh nền, thuốc, "
+                    "dị ứng hoặc dạng dùng nghĩa là người dùng đã khai báo không có/"
+                    "không ưu tiên; không hỏi lại các trường đó. Chỉ gọi "
+                    "request_profile_fields cho dữ liệu thực sự còn thiếu và luôn "
+                    "dùng tên field canonical."
+                )
+            ),
+            *state.get("messages", []),
+        ]
         response = await bound_model.ainvoke(messages)
         calls = getattr(response, "tool_calls", []) or []
         total_calls = int(state.get("tool_call_count", 0)) + len(calls)
@@ -138,17 +167,28 @@ def build_graph(*, model: Any, runtime: ToolRuntime, checkpointer: Any | None = 
                     )
                 ],
             }
-        return {"final_response": response}
+        return {
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(response, ensure_ascii=False),
+                    tool_call_id=call["id"],
+                    name="submit_consultation",
+                )
+            ],
+            "final_response": response,
+        }
 
     def route_finalize(state: AgentState) -> str:
         return "end" if state.get("final_response") is not None else "agent"
 
     builder = StateGraph(AgentState)
+    builder.add_node("prepare_context", prepare_context)
     builder.add_node("agent", agent_node)
     builder.add_node("tools", ToolNode(tools))
     builder.add_node("repair", repair_node)
     builder.add_node("finalize", finalize_node)
-    builder.add_edge(START, "agent")
+    builder.add_edge(START, "prepare_context")
+    builder.add_edge("prepare_context", "agent")
     builder.add_conditional_edges(
         "agent",
         route_agent,

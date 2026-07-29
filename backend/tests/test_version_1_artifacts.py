@@ -11,6 +11,7 @@ from version_1.tools import (
     load_tool_declarations,
     validate_tool_contract,
 )
+from version_1.tools.request_profile_fields import tool as request_profile_tool
 
 
 ROOT = Path(__file__).parents[2]
@@ -45,3 +46,27 @@ def test_contract_validation_fails_fast_on_manifest_drift():
 
     with pytest.raises(ValueError, match="tool contract mismatch"):
         validate_tool_contract(invalid)
+
+
+def test_request_profile_tool_emits_canonical_field_names(monkeypatch):
+    captured = {}
+
+    def fake_interrupt(payload):
+        captured.update(payload)
+        return {"profile_patch": {}}
+
+    monkeypatch.setattr(request_profile_tool, "interrupt", fake_interrupt)
+    tool = request_profile_tool.build(runtime=None)
+
+    tool.invoke(
+        {
+            "fields": ["nhóm tuổi", "mục tiêu", "thai/cho con bú"],
+            "question": "Bổ sung hồ sơ",
+        }
+    )
+
+    assert captured["fields"] == [
+        "age_group",
+        "goals",
+        "pregnancy_status",
+    ]

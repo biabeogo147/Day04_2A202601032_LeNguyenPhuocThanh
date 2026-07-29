@@ -198,11 +198,18 @@ def acceptance_passes(summary: dict[str, Any]) -> bool:
     )
 
 
-def _answer_for_case(case: dict[str, Any], field: str, _: str) -> str:
-    patch = case.get("resume_patch", {})
-    if field not in patch:
-        raise ValueError(f"Eval case {case['id']} lacks resume_patch for {field}")
-    value = patch[field]
+def _answer_for_case(
+    case: dict[str, Any],
+    profile_payload: dict[str, Any],
+    field: str,
+    _: str,
+) -> str:
+    available = {**profile_payload, **case.get("resume_patch", {})}
+    if field not in available:
+        raise ValueError(
+            f"Eval case {case['id']} lacks profile value for canonical field {field}"
+        )
+    value = available[field]
     return ", ".join(map(str, value)) if isinstance(value, list) else str(value)
 
 
@@ -228,7 +235,7 @@ async def run_case(
             profile_id=profile["id"],
             message=str(message),
             answer_provider=lambda field, question: _answer_for_case(
-                case, field, question
+                case, profile_payload, field, question
             ),
         )
         all_events.extend(events)

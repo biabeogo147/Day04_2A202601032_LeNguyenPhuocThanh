@@ -8,7 +8,17 @@ tools:
       properties:
         fields:
           type: array
-          items: {type: string}
+          items:
+            type: string
+            enum:
+              - age_group
+              - goals
+              - conditions
+              - medications
+              - allergies
+              - pregnancy_status
+              - budget_max_vnd
+              - preferred_dosage_forms
         question: {type: string}
   - name: search_product_catalog
     description: Search canonical catalog candidates by product name or user intent.

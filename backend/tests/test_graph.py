@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.agent.shared.advisory import HybridRetriever, Profile
@@ -16,12 +16,14 @@ class ScriptedModel:
     def __init__(self, responses):
         self.responses = iter(responses)
         self.bound_tool_names = []
+        self.invocations = []
 
     def bind_tools(self, tools):
         self.bound_tool_names = [tool.name for tool in tools]
         return self
 
     async def ainvoke(self, messages):
+        self.invocations.append(messages)
         return next(self.responses)
 
 
@@ -95,6 +97,8 @@ async def test_free_form_react_graph_executes_tools_and_returns_grounded_answer(
     } == set(model.bound_tool_names)
     assert result["final_response"]["recommendations"][0]["product_id"] == product.id
     assert result["rounds"] == 5
+    assert isinstance(result["messages"][-1], ToolMessage)
+    assert result["messages"][-1].name == "submit_consultation"
 
 
 async def test_graph_stops_after_one_repair_when_model_never_submits():
@@ -126,6 +130,77 @@ async def test_graph_stops_after_one_repair_when_model_never_submits():
 
     assert result["final_response"]["status"] == "safe_fallback"
     assert result["repair_count"] == 1
+
+
+async def test_graph_supplies_canonical_profile_context_to_model():
+    catalog = Catalog.from_csv(DATASET)
+    runtime = ToolRuntime(
+        catalog,
+        HybridRetriever(catalog),
+        Profile(
+            "adult",
+            ("tim mạch",),
+            (),
+            (),
+            (),
+            "not_applicable",
+            500_000,
+            ("Viên nang mềm",),
+        ),
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(content="Không có terminal tool."),
+            AIMessage(content="Vẫn không có terminal tool."),
+        ]
+    )
+
+    await build_graph(model=model, runtime=runtime).ainvoke(
+        {"messages": [HumanMessage(content="Tư vấn Omega-3")]}
+    )
+
+    system_contents = [
+        message.content
+        for message in model.invocations[0]
+        if message.type == "system"
+    ]
+    assert any("CANONICAL_PROFILE_JSON" in content for content in system_contents)
+    assert any('"age_group": "adult"' in content for content in system_contents)
+    assert any('"goals": ["tim mạch"]' in content for content in system_contents)
+
+
+async def test_prepare_context_resets_transient_state_from_previous_run():
+    catalog = Catalog.from_csv(DATASET)
+    runtime = ToolRuntime(
+        catalog,
+        HybridRetriever(catalog),
+        Profile("adult", ("tim mạch",), (), (), (), "not_applicable", 500_000, ()),
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(content="Không có terminal tool."),
+            AIMessage(content="Vẫn không có terminal tool."),
+        ]
+    )
+
+    result = await build_graph(model=model, runtime=runtime).ainvoke(
+        {
+            "messages": [HumanMessage(content="Lượt hội thoại mới")],
+            "rounds": 6,
+            "repair_count": 1,
+            "tool_call_count": 12,
+            "tool_call_signatures": ["stale"],
+            "final_response": {"status": "stale"},
+        }
+    )
+
+    assert len(model.invocations) == 2
+    assert result["rounds"] == 2
+    assert result["repair_count"] == 1
+    assert result["tool_call_count"] == 0
+    assert result["tool_call_signatures"] == []
+    assert result["final_response"]["status"] == "safe_fallback"
+    assert "submit_consultation" in result["final_response"]["limitations"][0]
 
 
 async def test_graph_detects_repeated_identical_tool_call():

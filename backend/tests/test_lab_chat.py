@@ -4,10 +4,12 @@ import json
 
 from version_1.agent import TraceEvent
 from version_1.chat import (
+    _new_profile_from_input,
     coerce_profile_patch,
     run_chat_turn,
     write_transcript,
 )
+from app.schemas import ProfileCreate
 
 
 def test_profile_answers_are_coerced_to_api_schema():
@@ -25,6 +27,53 @@ def test_profile_answers_are_coerced_to_api_schema():
         "budget_max_vnd": 450000,
         "pregnancy_status": "none",
     }
+
+
+def test_profile_answers_accept_vietnamese_field_labels_and_friendly_values():
+    patch = coerce_profile_patch(
+        ["nhóm tuổi", "mục tiêu", "thai/cho con bú", "dạng dùng ưa thích"],
+        {
+            "nhóm tuổi": "20",
+            "mục tiêu": "không có",
+            "thai/cho con bú": "không có",
+            "dạng dùng ưa thích": "loại nào cũng được",
+        },
+    )
+
+    assert patch == {
+        "age_group": "adult",
+        "goals": [],
+        "pregnancy_status": "none",
+        "preferred_dosage_forms": [],
+    }
+
+
+def test_new_cli_profile_from_reported_input_is_valid_for_fastapi(monkeypatch):
+    answers = iter(
+        [
+            "Demo",
+            "20",
+            "không có",
+            "không có",
+            "không có",
+            "không có",
+            "không có",
+            "500000",
+            "loại nào cũng được",
+        ]
+    )
+    monkeypatch.setattr("builtins.input", lambda _: next(answers))
+
+    payload = _new_profile_from_input()
+    profile = ProfileCreate.model_validate(payload)
+
+    assert profile.age_group == "adult"
+    assert profile.goals == []
+    assert profile.conditions == []
+    assert profile.medications == []
+    assert profile.allergies == []
+    assert profile.pregnancy_status == "none"
+    assert profile.preferred_dosage_forms == []
 
 
 class InterruptingClient:
