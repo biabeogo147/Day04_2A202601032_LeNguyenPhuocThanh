@@ -1,0 +1,1 @@
+"""Stable shared agent infrastructure."""
