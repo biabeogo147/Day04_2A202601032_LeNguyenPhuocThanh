@@ -17,9 +17,15 @@ def test_initial_alembic_migration_creates_runtime_tables(tmp_path, monkeypatch)
     tables = set(inspect(create_engine(f"sqlite:///{database_path.as_posix()}")).get_table_names())
     assert {
         "alembic_version",
-        "profiles",
         "sessions",
         "messages",
         "runs",
         "trace_events",
     } <= tables
+    inspector = inspect(create_engine(f"sqlite:///{database_path.as_posix()}"))
+    session_columns = {
+        column["name"]: column for column in inspector.get_columns("sessions")
+    }
+    assert "profile_id" not in session_columns
+    assert "context" in session_columns
+    assert "profiles" not in tables

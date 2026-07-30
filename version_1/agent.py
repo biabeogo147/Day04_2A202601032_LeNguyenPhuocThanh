@@ -66,29 +66,10 @@ class ApiAgentClient:
             raise AgentApiError(f"FastAPI trả HTTP {response.status_code} cho {method} {path}")
         return response.json()
 
-    async def list_profiles(self) -> list[dict[str, Any]]:
-        result = await self._request("GET", "/api/v1/profiles")
-        assert isinstance(result, list)
-        return result
-
-    async def create_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
-        result = await self._request("POST", "/api/v1/profiles", json_body=payload)
-        assert isinstance(result, dict)
-        return result
-
-    async def patch_profile(
-        self, profile_id: str, patch: dict[str, Any]
-    ) -> dict[str, Any]:
-        result = await self._request(
-            "PATCH", f"/api/v1/profiles/{profile_id}", json_body=patch
-        )
-        assert isinstance(result, dict)
-        return result
-
     async def create_session(
         self,
-        profile_id: str,
         *,
+        context: dict[str, Any] | None = None,
         provider: str = "openai",
         version_id: str = "version_1",
     ) -> dict[str, Any]:
@@ -96,7 +77,7 @@ class ApiAgentClient:
             "POST",
             "/api/v1/sessions",
             json_body={
-                "profile_id": profile_id,
+                "context": context or {},
                 "version_id": version_id,
                 "provider": provider,
             },
@@ -122,14 +103,14 @@ class ApiAgentClient:
         self,
         run_id: str,
         *,
-        profile_patch: dict[str, Any] | None = None,
+        context_patch: dict[str, Any] | None = None,
         response: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         result = await self._request(
             "POST",
             f"/api/v1/runs/{run_id}/resume",
             json_body={
-                "profile_patch": profile_patch,
+                "context_patch": context_patch,
                 "response": response or {},
             },
         )

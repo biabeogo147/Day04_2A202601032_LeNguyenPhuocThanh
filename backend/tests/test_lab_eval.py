@@ -68,6 +68,53 @@ def test_eval_case_scores_routing_safety_grounding_and_guardrails():
     assert result["guardrail_violations"] == []
 
 
+def test_multi_turn_guardrails_are_measured_per_run_not_per_case():
+    events = []
+    sequence = 0
+    for _ in range(2):
+        sequence += 1
+        events.append(TraceEvent(sequence, "run.started", {}))
+        for _ in range(6):
+            sequence += 1
+            events.append(TraceEvent(sequence, "node.completed", {"node": "agent"}))
+        for _ in range(12):
+            sequence += 1
+            events.append(
+                TraceEvent(sequence, "tool.requested", {"tool": "search_product_catalog"})
+            )
+    run = {
+        "status": "completed",
+        "answer": {"dataset_fingerprint": "abc", "recommendations": []},
+    }
+    case = {"id": "multi", "expects": {"required_tools": ["search_product_catalog"]}}
+
+    result = evaluate_case(case, run, events)
+
+    assert result["guardrail_violations"] == []
+
+
+def test_guard_terminal_node_without_round_counter_is_not_an_extra_agent_round():
+    events = [TraceEvent(1, "run.started", {})]
+    for round_number in range(1, 7):
+        events.append(
+            TraceEvent(
+                round_number + 1,
+                "node.completed",
+                {"node": "agent", "rounds": round_number},
+            )
+        )
+    events.append(TraceEvent(8, "node.completed", {"node": "agent"}))
+    run = {
+        "status": "completed",
+        "answer": {"dataset_fingerprint": "abc", "recommendations": []},
+    }
+    case = {"id": "guard", "expects": {}}
+
+    result = evaluate_case(case, run, events)
+
+    assert result["guardrail_violations"] == []
+
+
 def test_summary_applies_acceptance_thresholds():
     results = [grounded_result(f"case-{index}") for index in range(9)]
     results.append(grounded_result("conflict", safety_conflict=True))
@@ -99,12 +146,9 @@ class ScriptedEvalClient:
         self.messages = []
         self.session_count = 0
 
-    async def create_profile(self, payload):
-        return {"id": "p1", **payload}
-
-    async def create_session(self, profile_id, *, provider):
+    async def create_session(self, *, context, provider):
         self.session_count += 1
-        return {"id": "s1", "profile_id": profile_id, "provider": provider}
+        return {"id": "s1", "context": context, "provider": provider}
 
     async def start_run(self, session_id, message):
         self.messages.append((session_id, message))
@@ -138,7 +182,7 @@ async def test_run_case_uses_one_session_for_all_multi_turn_messages():
     client = ScriptedEvalClient()
     case = {
         "id": "scripted-multi",
-        "profile": "adult_general",
+        "context_fixture": "adult_general",
         "turns": ["Lượt một", "Lượt hai"],
         "expects": {
             "required_tools": [
@@ -162,7 +206,6 @@ class InterruptingEvalClient(ScriptedEvalClient):
     def __init__(self):
         super().__init__()
         self.stream_count = 0
-        self.patches = []
         self.resumes = []
 
     async def stream_events(self, run_id, *, last_event_id=0):
@@ -187,20 +230,16 @@ class InterruptingEvalClient(ScriptedEvalClient):
         yield TraceEvent(5, "tool.requested", {"tool": "submit_consultation"})
         yield TraceEvent(6, "answer.completed", {"status": "answered"})
 
-    async def patch_profile(self, profile_id, patch):
-        self.patches.append(patch)
-        return {"id": profile_id, **patch}
-
-    async def resume_run(self, run_id, *, response):
-        self.resumes.append(response)
+    async def resume_run(self, run_id, *, context_patch, response):
+        self.resumes.append((context_patch, response))
         return {"id": run_id, "status": "running"}
 
 
-async def test_eval_uses_fixture_when_unplanned_profile_interrupt_occurs():
+async def test_eval_uses_fixture_when_unplanned_context_interrupt_occurs():
     client = InterruptingEvalClient()
     case = {
         "id": "single_goal_search",
-        "profile": "adult_general",
+        "context_fixture": "adult_general",
         "query": "Tôi muốn hỗ trợ sức khỏe tim mạch",
         "expects": {
             "required_tools": [
@@ -215,10 +254,8 @@ async def test_eval_uses_fixture_when_unplanned_profile_interrupt_occurs():
     result = await run_case(client, case, provider="openai")
 
     assert result["completed"] is True
-    assert client.patches == [
-        {
-            "age_group": "adult",
-            "goals": ["tim mạch"],
-            "conditions": [],
-        }
-    ]
+    assert client.resumes[0][0] == {
+        "age_group": "adult",
+        "goals": ["tim mạch"],
+        "conditions": [],
+    }

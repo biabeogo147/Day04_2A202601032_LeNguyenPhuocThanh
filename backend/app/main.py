@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator, Protocol
 
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI, Header, HTTPException, Response, status
+from fastapi import FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
@@ -18,9 +18,6 @@ from app.agent.registry import VERSION_REGISTRY
 from app.config import Settings
 from version_1.tools import validate_tool_contract
 from app.schemas import (
-    ProfileCreate,
-    ProfilePatch,
-    ProfileRead,
     ResumeRunRequest,
     RunCreate,
     RunRead,
@@ -129,47 +126,11 @@ def create_app(
         return [item["manifest"] for item in VERSION_REGISTRY.values()]
 
     @app.post(
-        "/api/v1/profiles",
-        response_model=ProfileRead,
-        status_code=status.HTTP_201_CREATED,
-    )
-    async def create_profile(payload: ProfileCreate) -> ProfileRead:
-        return await db.create_profile(payload)
-
-    @app.get("/api/v1/profiles", response_model=list[ProfileRead])
-    async def list_profiles() -> list[ProfileRead]:
-        return await db.list_profiles()
-
-    @app.get("/api/v1/profiles/{profile_id}", response_model=ProfileRead)
-    async def get_profile(profile_id: str) -> ProfileRead:
-        profile = await db.get_profile(profile_id)
-        if profile is None:
-            raise HTTPException(status_code=404, detail="Profile not found")
-        return profile
-
-    @app.patch("/api/v1/profiles/{profile_id}", response_model=ProfileRead)
-    async def patch_profile(profile_id: str, payload: ProfilePatch) -> ProfileRead:
-        try:
-            return await db.update_profile(
-                profile_id, payload.model_dump(exclude_unset=True)
-            )
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Profile not found") from exc
-
-    @app.delete("/api/v1/profiles/{profile_id}", status_code=204)
-    async def delete_profile(profile_id: str) -> Response:
-        if not await db.delete_profile(profile_id):
-            raise HTTPException(status_code=404, detail="Profile not found")
-        return Response(status_code=204)
-
-    @app.post(
         "/api/v1/sessions",
         response_model=SessionRead,
         status_code=status.HTTP_201_CREATED,
     )
     async def create_session(payload: SessionCreate) -> SessionRead:
-        if await db.get_profile(payload.profile_id) is None:
-            raise HTTPException(status_code=404, detail="Profile not found")
         if payload.version_id not in VERSION_REGISTRY:
             raise HTTPException(status_code=422, detail="Unknown agent version")
         chat_model = "gpt-4o-mini" if payload.provider == "openai" else "gemini-2.5-flash"
@@ -179,7 +140,7 @@ def create_app(
             else "gemini-embedding-001"
         )
         return await db.create_session(
-            profile_id=payload.profile_id,
+            context=payload.context,
             version_id=payload.version_id,
             provider=payload.provider,
             chat_model=chat_model,
@@ -196,8 +157,8 @@ def create_app(
         return session
 
     @app.get("/api/v1/sessions", response_model=list[SessionRead])
-    async def list_sessions(profile_id: str | None = None) -> list[SessionRead]:
-        return await db.list_sessions(profile_id)
+    async def list_sessions() -> list[SessionRead]:
+        return await db.list_sessions()
 
     @app.post(
         "/api/v1/sessions/{session_id}/runs",
@@ -221,12 +182,13 @@ def create_app(
     @app.get("/api/v1/runs/{run_id}/events")
     async def run_events(
         run_id: str,
-        last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+        last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
+        last_event_id: int = Query(default=0, ge=0),
     ) -> EventSourceResponse:
         if await db.get_run(run_id) is None:
             raise HTTPException(status_code=404, detail="Run not found")
         try:
-            cursor = max(0, int(last_event_id or 0))
+            cursor = max(last_event_id, int(last_event_id_header or 0))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid Last-Event-ID") from exc
 
@@ -256,11 +218,9 @@ def create_app(
         session = await db.get_session(run.session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        if payload.profile_patch is not None:
-            await db.update_profile(
-                session.profile_id,
-                payload.profile_patch.model_dump(exclude_unset=True),
-            )
+        if payload.context_patch is not None:
+            patch = payload.context_patch.model_dump(exclude_unset=True)
+            await db.update_session_context(session.id, patch)
         await run_controller.resume(run_id, payload.response)
         refreshed = await db.get_run(run_id)
         assert refreshed is not None

@@ -32,7 +32,7 @@ class ImmediateRunner:
         await self.start(run_id)
 
 
-def test_profile_session_run_and_sse_replay(tmp_path):
+def test_session_run_and_sse_replay(tmp_path):
     database = Database(f"sqlite+aiosqlite:///{tmp_path / 'api.db'}")
     app = create_app(
         database=database,
@@ -45,25 +45,13 @@ def test_profile_session_run_and_sse_replay(tmp_path):
         assert health.status_code == 200
         assert health.json()["product_count"] == 100
 
-        profile = client.post(
-            "/api/v1/profiles",
-            json={
-                "display_name": "Mentor",
-                "age_group": "adult",
-                "goals": ["tim mạch"],
-                "conditions": [],
-                "medications": [],
-                "allergies": [],
-                "pregnancy_status": "not_applicable",
-                "budget_max_vnd": 500000,
-                "preferred_dosage_forms": ["Viên nang mềm"],
-            },
-        )
-        assert profile.status_code == 201
-
         session = client.post(
             "/api/v1/sessions",
-            json={"profile_id": profile.json()["id"], "version_id": "version_1", "provider": "openai"},
+            json={
+                "context": {"age_group": "adult", "goals": ["tim mạch"]},
+                "version_id": "version_1",
+                "provider": "openai",
+            },
         )
         assert session.status_code == 201
 
@@ -93,6 +81,14 @@ def test_profile_session_run_and_sse_replay(tmp_path):
         assert "event: answer.completed" in replay
         assert "id: 2" in replay
 
+        with client.stream(
+            "GET",
+            f"/api/v1/runs/{run.json()['id']}/events?last_event_id=1",
+        ) as response:
+            query_replay = "".join(response.iter_text())
+        assert "event: run.started" not in query_replay
+        assert "event: answer.completed" in query_replay
+
     assert not (DATASET.parents[1] / "storage").exists()
 
 
@@ -109,3 +105,47 @@ def test_versions_endpoint_exposes_only_version_1(tmp_path):
 
     assert versions.status_code == 200
     assert [item["id"] for item in versions.json()] == ["version_1"]
+
+
+def test_session_starts_without_context_and_resume_merges_context(tmp_path):
+    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'anonymous.db'}")
+    app = create_app(
+        database=database,
+        catalog=Catalog.from_csv(DATASET),
+        runner=ImmediateRunner(database),
+    )
+
+    with TestClient(app) as client:
+        session = client.post(
+            "/api/v1/sessions",
+            json={"version_id": "version_1", "provider": "openai"},
+        )
+
+        assert session.status_code == 201
+        assert session.json()["context"] == {}
+
+        run = client.post(
+            f"/api/v1/sessions/{session.json()['id']}/runs",
+            json={"message": "Tư vấn Omega-3 cho tôi"},
+        )
+        assert run.status_code == 202
+
+        resumed = client.post(
+            f"/api/v1/runs/{run.json()['id']}/resume",
+            json={
+                "context_patch": {
+                    "age_group": "adult",
+                    "conditions": [],
+                    "medications": ["warfarin"],
+                },
+                "response": {"confirmed": True},
+            },
+        )
+        assert resumed.status_code == 200
+
+        refreshed = client.get(f"/api/v1/sessions/{session.json()['id']}")
+        assert refreshed.json()["context"] == {
+            "age_group": "adult",
+            "conditions": [],
+            "medications": ["warfarin"],
+        }

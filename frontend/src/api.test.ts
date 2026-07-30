@@ -67,4 +67,12 @@ describe("SSE run subscription", () => {
     expect(FakeEventSource.instance.closed).toBe(true);
     expect(terminal).toHaveBeenCalledOnce();
   });
+
+  it("resumes SSE after the last interrupt event instead of replaying it", () => {
+    subscribeToRun("run-3", vi.fn(), vi.fn(), vi.fn(), 7);
+
+    expect(FakeEventSource.instance.url).toBe(
+      "/api/v1/runs/run-3/events?last_event_id=7",
+    );
+  });
 });

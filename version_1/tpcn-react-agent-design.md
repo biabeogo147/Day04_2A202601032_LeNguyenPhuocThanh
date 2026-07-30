@@ -9,11 +9,11 @@ tool allowlists, limits, and graph assembly belong to
 `backend/app/agent/version_1/`. Future versions import shared code but never another
 version.
 
-SQLite stores demo profiles, sessions, messages, runs, and structured trace events.
+SQLite stores sessions with incremental context, messages, runs, and structured trace events.
 LangGraph checkpoints use a separate SQLite file. Chroma stores local product vectors;
 collection identity includes the dataset and embedding-model fingerprints.
 
-The mentor UI has profile, chat/comparison, and structured trace panels. It shows
+The mentor UI has chat/comparison and structured trace panels. It shows
 state transitions, retrieval, tool calls, scoring, safety decisions, latency, and usage,
 but never raw hidden chain-of-thought.
 

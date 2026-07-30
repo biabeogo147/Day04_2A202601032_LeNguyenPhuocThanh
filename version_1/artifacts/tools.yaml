@@ -1,7 +1,7 @@
 version: version_1
 tools:
   - name: request_profile_fields
-    description: Pause the graph and request missing structured profile fields.
+    description: Pause the graph and request only the missing session-context fields needed now.
     input_schema:
       type: object
       required: [fields, question]
@@ -45,7 +45,7 @@ tools:
           type: array
           items: {type: string}
   - name: assess_product_safety
-    description: Check explicit CSV contraindications against the current profile.
+    description: Check explicit CSV contraindications against confirmed session context.
     input_schema:
       type: object
       required: [product_ids]

@@ -60,6 +60,7 @@ class ToolRuntime:
         self.details: set[str] = set()
         self.safety: dict[str, SafetyAssessment] = {}
         self.ranking: dict[str, FitScore] = {}
+        self.context_requests_allowed = True
 
     def request_profile_fields(self, fields: Sequence[str], question: str) -> dict[str, Any]:
         return {
@@ -178,7 +179,7 @@ class ToolRuntime:
         status: str,
         selected_product_ids: Sequence[str],
         final_judgment: str,
-        rationale_by_product: Mapping[str, Sequence[str]],
+        rationale_by_product: Mapping[str, Sequence[str] | str],
         limitations: Sequence[str],
         follow_up_question: str | None = None,
     ) -> dict[str, Any]:
@@ -200,18 +201,23 @@ class ToolRuntime:
             raise GroundingError("Thiếu nhận định cuối cùng.")
 
         recommendations = []
-        professional_review_required = False
+        professional_review_required = any(
+            assessment.professional_review_required
+            for assessment in self.safety.values()
+        )
         for product_id in selected:
             product = self.catalog.get(product_id)
             assessment = self.safety[product_id]
             professional_review_required |= assessment.professional_review_required
+            raw_reasons = rationale_by_product.get(product_id, ())
+            reasons = [raw_reasons] if isinstance(raw_reasons, str) else list(raw_reasons)
             recommendations.append(
                 {
                     **_product_payload(product),
                     "fit_score": self.ranking[product_id].total,
                     "score_breakdown": self.ranking[product_id].breakdown,
                     "safety": asdict(assessment),
-                    "reasons": list(rationale_by_product.get(product_id, ())),
+                    "reasons": reasons,
                 }
             )
         return {

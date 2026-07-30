@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -60,9 +60,7 @@ class AgentRunner:
         session = await self.database.get_session(run.session_id)
         if session is None:
             raise KeyError(run.session_id)
-        profile_record = await self.database.get_profile(session.profile_id)
-        if profile_record is None:
-            raise KeyError(session.profile_id)
+        profile = _profile_from_context(session.context)
         provider = session.provider
         if provider not in {"openai", "gemini"}:
             raise ProviderConfigurationError(f"Provider không được hỗ trợ: {provider}")
@@ -87,16 +85,6 @@ class AgentRunner:
                 "dataset_fingerprint": self.catalog.dataset_fingerprint,
             },
         )
-        profile = Profile(
-            age_group=profile_record.age_group,
-            goals=tuple(profile_record.goals),
-            conditions=tuple(profile_record.conditions),
-            medications=tuple(profile_record.medications),
-            allergies=tuple(profile_record.allergies),
-            pregnancy_status=profile_record.pregnancy_status,
-            budget_max_vnd=profile_record.budget_max_vnd,
-            preferred_dosage_forms=tuple(profile_record.preferred_dosage_forms),
-        )
         runtime = ToolRuntime(
             self.catalog,
             HybridRetriever(self.catalog, vector_index),
@@ -111,10 +99,16 @@ class AgentRunner:
     async def _trace_update(
         self, run_id: str, node: str, update: Any, latency_ms: float
     ) -> None:
+        node_payload: dict[str, Any] = {
+            "node": node,
+            "latency_ms": round(latency_ms, 1),
+        }
+        if isinstance(update, dict) and isinstance(update.get("rounds"), int):
+            node_payload["rounds"] = update["rounds"]
         await self.database.append_trace(
             run_id,
             "node.completed",
-            {"node": node, "latency_ms": round(latency_ms, 1)},
+            node_payload,
         )
         if not isinstance(update, dict):
             return
@@ -262,6 +256,25 @@ def _parse_tool_output(content: Any) -> dict[str, Any]:
         except json.JSONDecodeError:
             return {"summary": content[:1000]}
     return {"summary": str(content)[:1000]}
+
+
+def _profile_from_context(context: Mapping[str, Any]) -> Profile:
+    def tuple_value(name: str) -> tuple[str, ...] | None:
+        if name not in context:
+            return None
+        value = context[name]
+        return tuple(value or ())
+
+    return Profile(
+        age_group=context.get("age_group"),
+        goals=tuple_value("goals"),
+        conditions=tuple_value("conditions"),
+        medications=tuple_value("medications"),
+        allergies=tuple_value("allergies"),
+        pregnancy_status=context.get("pregnancy_status"),
+        budget_max_vnd=context.get("budget_max_vnd"),
+        preferred_dosage_forms=tuple_value("preferred_dosage_forms"),
+    )
 
 
 def _interrupt_payload(value: Any) -> dict[str, Any]:

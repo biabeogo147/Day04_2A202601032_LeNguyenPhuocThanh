@@ -11,6 +11,15 @@ from version_1.profile_fields import canonical_profile_fields
 def build(runtime: Any) -> StructuredTool:
     def request_profile_fields(fields: list[str], question: str) -> dict[str, Any]:
         """Pause and ask the user for missing structured profile fields."""
+        if not getattr(runtime, "context_requests_allowed", True):
+            return {
+                "resumed": False,
+                "skipped": True,
+                "reason": (
+                    "Câu hỏi chỉ tra cứu thông tin nhãn/catalog nên không cần hồ sơ; "
+                    "hãy trả lời bằng dữ liệu canonical đã truy xuất."
+                ),
+            }
         response = interrupt(
             {
                 "fields": canonical_profile_fields(fields),

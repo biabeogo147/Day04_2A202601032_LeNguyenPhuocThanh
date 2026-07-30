@@ -4,16 +4,14 @@ import json
 
 from version_1.agent import TraceEvent
 from version_1.chat import (
-    _new_profile_from_input,
-    coerce_profile_patch,
+    coerce_context_patch,
     run_chat_turn,
     write_transcript,
 )
-from app.schemas import ProfileCreate
 
 
-def test_profile_answers_are_coerced_to_api_schema():
-    patch = coerce_profile_patch(
+def test_context_answers_are_coerced_to_api_schema():
+    patch = coerce_context_patch(
         ["goals", "budget_max_vnd", "pregnancy_status"],
         {
             "goals": "xương khớp, vitamin D",
@@ -29,8 +27,8 @@ def test_profile_answers_are_coerced_to_api_schema():
     }
 
 
-def test_profile_answers_accept_vietnamese_field_labels_and_friendly_values():
-    patch = coerce_profile_patch(
+def test_context_answers_accept_vietnamese_field_labels_and_friendly_values():
+    patch = coerce_context_patch(
         ["nhóm tuổi", "mục tiêu", "thai/cho con bú", "dạng dùng ưa thích"],
         {
             "nhóm tuổi": "20",
@@ -48,38 +46,9 @@ def test_profile_answers_accept_vietnamese_field_labels_and_friendly_values():
     }
 
 
-def test_new_cli_profile_from_reported_input_is_valid_for_fastapi(monkeypatch):
-    answers = iter(
-        [
-            "Demo",
-            "20",
-            "không có",
-            "không có",
-            "không có",
-            "không có",
-            "không có",
-            "500000",
-            "loại nào cũng được",
-        ]
-    )
-    monkeypatch.setattr("builtins.input", lambda _: next(answers))
-
-    payload = _new_profile_from_input()
-    profile = ProfileCreate.model_validate(payload)
-
-    assert profile.age_group == "adult"
-    assert profile.goals == []
-    assert profile.conditions == []
-    assert profile.medications == []
-    assert profile.allergies == []
-    assert profile.pregnancy_status == "none"
-    assert profile.preferred_dosage_forms == []
-
-
 class InterruptingClient:
     def __init__(self):
         self.stream_count = 0
-        self.patches = []
         self.resumes = []
 
     async def start_run(self, session_id, message):
@@ -101,12 +70,8 @@ class InterruptingClient:
                 {"status": "answered", "final_judgment": "Có căn cứ."},
             )
 
-    async def patch_profile(self, profile_id, patch):
-        self.patches.append((profile_id, patch))
-        return {"id": profile_id, **patch}
-
-    async def resume_run(self, run_id, *, response):
-        self.resumes.append((run_id, response))
+    async def resume_run(self, run_id, *, context_patch, response):
+        self.resumes.append((run_id, context_patch, response))
         return {"id": run_id, "status": "running"}
 
     async def get_run(self, run_id):
@@ -117,29 +82,67 @@ class InterruptingClient:
         }
 
 
-async def test_chat_turn_patches_profile_and_resumes_same_run():
+async def test_chat_turn_merges_context_and_resumes_same_run():
     client = InterruptingClient()
 
     run, events = await run_chat_turn(
         client,
         session_id="s1",
-        profile_id="p1",
         message="Tư vấn giúp tôi",
         answer_provider=lambda field, question: "xương khớp",
     )
 
     assert run["status"] == "completed"
     assert [event.sequence for event in events] == [1, 2]
-    assert client.patches == [("p1", {"goals": ["xương khớp"]})]
     assert client.resumes == [
-        ("r1", {"profile_patch": {"goals": ["xương khớp"]}})
+        (
+            "r1",
+            {"goals": ["xương khớp"]},
+            {"context_patch": {"goals": ["xương khớp"]}},
+        )
     ]
+
+
+class DelayedInterruptEventClient(InterruptingClient):
+    async def stream_events(self, run_id, *, last_event_id=0):
+        self.stream_count += 1
+        if self.stream_count == 1:
+            yield TraceEvent(1, "node.completed", {"node": "agent"})
+        elif self.stream_count == 2:
+            assert last_event_id == 1
+            yield TraceEvent(
+                2,
+                "profile.required",
+                {"fields": ["goals"], "question": "Mục tiêu của bạn là gì?"},
+            )
+        else:
+            assert last_event_id == 2
+            yield TraceEvent(3, "answer.completed", {"status": "answered"})
+
+    async def get_run(self, run_id):
+        if self.stream_count < 3:
+            return {"id": run_id, "status": "interrupted", "answer": None}
+        return {"id": run_id, "status": "completed", "answer": {"status": "answered"}}
+
+
+async def test_chat_turn_replays_once_when_interrupt_event_arrives_late():
+    client = DelayedInterruptEventClient()
+
+    run, events = await run_chat_turn(
+        client,
+        session_id="s1",
+        message="Tư vấn giúp tôi",
+        answer_provider=lambda field, question: "xương khớp",
+    )
+
+    assert run["status"] == "completed"
+    assert [event.sequence for event in events] == [1, 2, 3]
+    assert client.stream_count == 3
 
 
 def test_transcript_contains_public_events_but_no_secret(tmp_path):
     target = write_transcript(
         tmp_path,
-        profile_id="p1",
         session_id="s1",
         turns=[
             {
@@ -152,7 +155,7 @@ def test_transcript_contains_public_events_but_no_secret(tmp_path):
 
     content = target.read_text(encoding="utf-8")
     payload = json.loads(content)
-    assert payload["profile_id"] == "p1"
+    assert "profile_id" not in payload
     assert payload["turns"][0]["events"][0]["type"] == "public.decision"
     assert "OPENAI_API_KEY" not in content
     assert "chain-of-thought" not in content.casefold()

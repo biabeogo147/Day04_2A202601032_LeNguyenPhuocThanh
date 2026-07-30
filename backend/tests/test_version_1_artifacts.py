@@ -25,6 +25,12 @@ def test_runtime_prompt_comes_from_version_1_artifact():
     assert SYSTEM_PROMPT == expected_path.read_text(encoding="utf-8")
 
 
+def test_system_prompt_never_requests_context_for_factual_label_lookup():
+    assert "TUYỆT ĐỐI KHÔNG gọi `request_profile_fields`" in SYSTEM_PROMPT
+    normalized = " ".join(SYSTEM_PROMPT.split())
+    assert "thành phần, hàm lượng, giá, quy cách, liều dùng" in normalized
+
+
 def test_manifest_yaml_and_registry_have_the_same_ordered_tool_names():
     declarations = load_tool_declarations()
     declared_names = tuple(item["name"] for item in declarations)

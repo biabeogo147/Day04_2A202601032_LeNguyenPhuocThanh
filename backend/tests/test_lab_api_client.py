@@ -10,9 +10,8 @@ from version_1.agent import AgentApiError, ApiAgentClient, TraceEvent, configure
 
 
 @pytest.fixture
-def profile_payload():
+def context_payload():
     return {
-        "display_name": "Eval",
         "age_group": "adult",
         "goals": ["tim mạch"],
         "conditions": [],
@@ -24,14 +23,12 @@ def profile_payload():
     }
 
 
-async def test_client_uses_public_profile_session_and_run_contract(profile_payload):
+async def test_client_uses_public_session_and_run_contract(context_payload):
     requests: list[tuple[str, str, dict]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content or b"{}")
         requests.append((request.method, request.url.path, payload))
-        if request.url.path == "/api/v1/profiles":
-            return httpx.Response(201, json={"id": "p1", **profile_payload})
         if request.url.path == "/api/v1/sessions":
             return httpx.Response(201, json={"id": "s1"})
         return httpx.Response(202, json={"id": "r1", "status": "queued"})
@@ -40,17 +37,15 @@ async def test_client_uses_public_profile_session_and_run_contract(profile_paylo
         transport=httpx.MockTransport(handler), base_url="http://test"
     ) as http:
         client = ApiAgentClient("http://test", http_client=http)
-        profile = await client.create_profile(profile_payload)
-        session = await client.create_session(profile["id"])
+        session = await client.create_session(context=context_payload)
         run = await client.start_run(session["id"], "Tư vấn Omega-3")
 
     assert run["id"] == "r1"
     assert requests == [
-        ("POST", "/api/v1/profiles", profile_payload),
         (
             "POST",
             "/api/v1/sessions",
-            {"profile_id": "p1", "version_id": "version_1", "provider": "openai"},
+            {"context": context_payload, "version_id": "version_1", "provider": "openai"},
         ),
         (
             "POST",
@@ -85,7 +80,7 @@ async def test_sse_stream_replays_after_last_event_id():
     ]
 
 
-async def test_patch_and_resume_send_structured_profile_data():
+async def test_resume_sends_structured_context_data():
     bodies: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -96,18 +91,16 @@ async def test_patch_and_resume_send_structured_profile_data():
         transport=httpx.MockTransport(handler), base_url="http://test"
     ) as http:
         client = ApiAgentClient("http://test", http_client=http)
-        await client.patch_profile("p1", {"goals": ["xương khớp"]})
         await client.resume_run(
             "r1",
-            profile_patch={"goals": ["xương khớp"]},
-            response={"profile_patch": {"goals": ["xương khớp"]}},
+            context_patch={"goals": ["xương khớp"]},
+            response={"context_patch": {"goals": ["xương khớp"]}},
         )
 
     assert bodies == [
-        {"goals": ["xương khớp"]},
         {
-            "profile_patch": {"goals": ["xương khớp"]},
-            "response": {"profile_patch": {"goals": ["xương khớp"]}},
+            "context_patch": {"goals": ["xương khớp"]},
+            "response": {"context_patch": {"goals": ["xương khớp"]}},
         },
     ]
 

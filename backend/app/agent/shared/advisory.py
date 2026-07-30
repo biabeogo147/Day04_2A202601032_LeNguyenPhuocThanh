@@ -8,14 +8,14 @@ from .catalog import Catalog, Product, fold_text
 
 @dataclass(frozen=True)
 class Profile:
-    age_group: str
-    goals: tuple[str, ...]
-    conditions: tuple[str, ...]
-    medications: tuple[str, ...]
-    allergies: tuple[str, ...]
-    pregnancy_status: str
-    budget_max_vnd: int
-    preferred_dosage_forms: tuple[str, ...]
+    age_group: str | None
+    goals: tuple[str, ...] | None
+    conditions: tuple[str, ...] | None
+    medications: tuple[str, ...] | None
+    allergies: tuple[str, ...] | None
+    pregnancy_status: str | None
+    budget_max_vnd: int | None
+    preferred_dosage_forms: tuple[str, ...] | None
 
 
 @dataclass(frozen=True)
@@ -89,6 +89,10 @@ MEDICATION_SYNONYMS = {
     "warfarin": ("chong dong", "roi loan dong mau", "chay mau"),
     "thuoc chong dong": ("chong dong", "roi loan dong mau", "chay mau"),
 }
+ALLERGY_SYNONYMS = {
+    "hai san": ("hai san", "ca", "tom", "cua"),
+    "sua": ("sua", "lactose", "dam sua"),
+}
 PREGNANCY_TERMS = ("phu nu co thai", "phu nu mang thai", "thai ky")
 AGE_TERMS = {
     "infant": ("tre so sinh", "tre duoi 6 thang", "tre duoi 2 tuoi"),
@@ -107,15 +111,20 @@ def assess_product_safety(product: Product, profile: Profile) -> SafetyAssessmen
     contraindications = fold_text(product.contraindications)
     matched: list[str] = []
 
-    for allergy in profile.allergies:
-        if _contains_term(contraindications, allergy) and "di ung" in contraindications:
+    for allergy in profile.allergies or ():
+        folded_allergy = fold_text(allergy)
+        terms = ALLERGY_SYNONYMS.get(folded_allergy, (folded_allergy,))
+        if (
+            any(_contains_term(contraindications, term) for term in terms)
+            and "di ung" in contraindications
+        ):
             matched.append(f"Dị ứng: {allergy}")
 
-    for condition in profile.conditions:
+    for condition in profile.conditions or ():
         if _contains_term(contraindications, condition):
             matched.append(f"Bệnh nền: {condition}")
 
-    for medication in profile.medications:
+    for medication in profile.medications or ():
         folded_medication = fold_text(medication)
         terms = MEDICATION_SYNONYMS.get(folded_medication, (folded_medication,))
         if any(_contains_term(contraindications, term) for term in terms):
@@ -126,7 +135,7 @@ def assess_product_safety(product: Product, profile: Profile) -> SafetyAssessmen
     ):
         matched.append(f"Thai/cho con bú: {profile.pregnancy_status}")
 
-    if any(_contains_term(contraindications, term) for term in AGE_TERMS.get(profile.age_group, ())):
+    if any(_contains_term(contraindications, term) for term in AGE_TERMS.get(profile.age_group or "", ())):
         matched.append(f"Nhóm tuổi: {profile.age_group}")
 
     if matched:
@@ -136,6 +145,26 @@ def assess_product_safety(product: Product, profile: Profile) -> SafetyAssessmen
             professional_review_required=True,
             matched_rules=tuple(matched),
             evidence=product.contraindications,
+        )
+
+    unknown_fields = [
+        name
+        for name in (
+            "age_group",
+            "conditions",
+            "medications",
+            "allergies",
+            "pregnancy_status",
+        )
+        if getattr(profile, name) is None
+    ]
+    if unknown_fields:
+        return SafetyAssessment(
+            status="insufficient_evidence",
+            exclude=False,
+            professional_review_required=True,
+            matched_rules=(),
+            evidence=f"Thiếu thông tin hồ sơ: {', '.join(unknown_fields)}.",
         )
 
     limited_evidence = bool(
@@ -188,7 +217,6 @@ def rank_product_fit(
         if requested
         else 0.0
     )
-    preferred_forms = {fold_text(item) for item in profile.preferred_dosage_forms}
     completeness_fields = (
         product.name,
         product.function,
@@ -199,15 +227,44 @@ def rank_product_fit(
     )
     completeness = sum(bool(item.strip()) for item in completeness_fields) / len(completeness_fields)
 
-    breakdown = {
+    weighted_scores: dict[str, float] = {
         "semantic_goal": round(max(0.0, min(semantic_similarity, 1.0)) * 35, 2),
-        "audience": round(_audience_match(product, profile.age_group) * 20, 2),
-        "nutrients": round(nutrient_match * 20, 2),
-        "budget": 10.0 if product.price_vnd <= profile.budget_max_vnd else 0.0,
-        "dosage_form": 10.0 if fold_text(product.dosage_form) in preferred_forms else 0.0,
         "data_completeness": round(completeness * 5, 2),
     }
-    total = 0.0 if safety.exclude else round(sum(breakdown.values()), 2)
+    available_weight = 40.0
+    if profile.age_group:
+        weighted_scores["audience"] = round(_audience_match(product, profile.age_group) * 20, 2)
+        available_weight += 20
+    if requested:
+        weighted_scores["nutrients"] = round(nutrient_match * 20, 2)
+        available_weight += 20
+    if profile.budget_max_vnd is not None:
+        weighted_scores["budget"] = 10.0 if product.price_vnd <= profile.budget_max_vnd else 0.0
+        available_weight += 10
+    if profile.preferred_dosage_forms:
+        preferred_forms = {fold_text(item) for item in profile.preferred_dosage_forms}
+        weighted_scores["dosage_form"] = (
+            10.0 if fold_text(product.dosage_form) in preferred_forms else 0.0
+        )
+        available_weight += 10
+
+    breakdown = {
+        name: weighted_scores[name]
+        for name in (
+            "semantic_goal",
+            "audience",
+            "nutrients",
+            "budget",
+            "dosage_form",
+            "data_completeness",
+        )
+        if name in weighted_scores
+    }
+    total = (
+        0.0
+        if safety.exclude
+        else round(sum(breakdown.values()) / available_weight * 100, 2)
+    )
     return FitScore(total=total, breakdown=breakdown, safety=safety)
 
 

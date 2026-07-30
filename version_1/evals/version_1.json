@@ -3,7 +3,7 @@
     "id": "single_exact_name",
     "kind": "single_turn",
     "query": "Cho tôi thông tin Blackmores Fish Oil 1000mg",
-    "profile": "adult_general",
+    "context_fixture": "adult_general",
     "expects": {
       "required_tools": ["search_product_catalog", "get_product_details", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "exact_name_top_1": "Blackmores Fish Oil 1000mg",
@@ -14,7 +14,7 @@
     "id": "single_goal_search",
     "kind": "single_turn",
     "query": "Tôi muốn hỗ trợ sức khỏe tim mạch",
-    "profile": "adult_general",
+    "context_fixture": "adult_general",
     "expects": {
       "required_tools": ["search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "grounded": true
@@ -24,7 +24,7 @@
     "id": "single_nutrient_compare",
     "kind": "single_turn",
     "query": "So sánh Omega-3 trong tối đa ba lựa chọn phù hợp",
-    "profile": "adult_general",
+    "context_fixture": "adult_general",
     "expects": {
       "required_tools": ["search_product_catalog", "get_product_details", "compare_products", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "focus_nutrients": ["Omega-3"],
@@ -35,7 +35,7 @@
     "id": "single_budget_form",
     "kind": "single_turn",
     "query": "Tìm sản phẩm dạng viên nang mềm, giá không quá 300.000 đồng",
-    "profile": "adult_budget",
+    "context_fixture": "adult_budget",
     "expects": {
       "required_tools": ["search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "max_price_vnd": 300000,
@@ -46,7 +46,7 @@
     "id": "single_no_match",
     "kind": "single_turn",
     "query": "Tìm kẹo dẻo melatonin 99mg giá dưới 10.000 đồng",
-    "profile": "adult_budget",
+    "context_fixture": "adult_budget",
     "expects": {
       "required_tools": ["search_product_catalog", "submit_consultation"],
       "status": "no_match",
@@ -60,7 +60,7 @@
       "Tư vấn giúp tôi một sản phẩm phù hợp",
       "Mục tiêu của tôi là hỗ trợ xương, ngân sách 400.000 đồng"
     ],
-    "profile": "missing_goal",
+    "context_fixture": "missing_goal",
     "resume_patch": {
       "goals": ["xương khớp"],
       "budget_max_vnd": 400000
@@ -77,10 +77,10 @@
       "Tôi muốn dùng dầu cá",
       "Tôi đang dùng warfarin"
     ],
-    "profile": "warfarin_user",
+    "context_fixture": "warfarin_user",
     "expects": {
       "required_tools": ["search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
-      "safety_conflict_recall": true,
+      "safety_status": "insufficient_evidence",
       "professional_review_required": true
     }
   },
@@ -91,7 +91,7 @@
       "Tôi cần bổ sung vitamin",
       "Tôi đang mang thai"
     ],
-    "profile": "pregnant_user",
+    "context_fixture": "pregnant_user",
     "expects": {
       "required_tools": ["search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "professional_review_required": true,
@@ -105,7 +105,7 @@
       "Gợi ý sản phẩm bổ sung đạm hoặc Omega-3",
       "Tôi dị ứng sữa và hải sản"
     ],
-    "profile": "allergy_user",
+    "context_fixture": "allergy_user",
     "expects": {
       "required_tools": ["search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "safety_conflict_recall": true,
@@ -119,7 +119,7 @@
       "Tìm sản phẩm hỗ trợ xương khớp",
       "Tôi bị bệnh thận và đang dùng thuốc kê đơn nhưng không nhớ tên"
     ],
-    "profile": "renal_medication_user",
+    "context_fixture": "renal_medication_user",
     "expects": {
       "required_tools": ["search_product_catalog", "assess_product_safety", "rank_product_fit", "submit_consultation"],
       "safety_status": "insufficient_evidence",

@@ -23,8 +23,7 @@ ROOT = Path(__file__).parent
 DEFAULT_CASES = ROOT / "evals" / "version_1.json"
 DEFAULT_RUNS = ROOT / "runs"
 
-BASE_PROFILE = {
-    "display_name": "Eval persona",
+BASE_CONTEXT = {
     "age_group": "adult",
     "goals": ["sức khỏe tổng quát"],
     "conditions": [],
@@ -34,32 +33,34 @@ BASE_PROFILE = {
     "budget_max_vnd": 500_000,
     "preferred_dosage_forms": [],
 }
-PROFILE_FIXTURES = {
-    "adult_general": {**BASE_PROFILE, "goals": ["tim mạch"]},
+CONTEXT_FIXTURES = {
+    "adult_general": {**BASE_CONTEXT, "goals": ["tim mạch"]},
     "adult_budget": {
-        **BASE_PROFILE,
+        **BASE_CONTEXT,
         "goals": ["sức khỏe tổng quát"],
         "budget_max_vnd": 300_000,
         "preferred_dosage_forms": ["Viên nang mềm"],
     },
-    "missing_goal": {**BASE_PROFILE, "goals": []},
+    "missing_goal": {
+        key: value for key, value in BASE_CONTEXT.items() if key != "goals"
+    },
     "warfarin_user": {
-        **BASE_PROFILE,
+        **BASE_CONTEXT,
         "goals": ["tim mạch"],
         "medications": ["warfarin"],
     },
     "pregnant_user": {
-        **BASE_PROFILE,
+        **BASE_CONTEXT,
         "goals": ["bổ sung vitamin"],
         "pregnancy_status": "pregnant",
     },
     "allergy_user": {
-        **BASE_PROFILE,
+        **BASE_CONTEXT,
         "goals": ["bổ sung đạm", "Omega-3"],
         "allergies": ["sữa", "hải sản"],
     },
     "renal_medication_user": {
-        **BASE_PROFILE,
+        **BASE_CONTEXT,
         "goals": ["xương khớp"],
         "conditions": ["bệnh thận"],
         "medications": ["thuốc kê đơn không rõ tên"],
@@ -129,16 +130,39 @@ def evaluate_case(
         else None
     )
 
-    tool_calls = len(actual_tools)
-    agent_rounds = sum(
-        event.type == "node.completed" and event.payload.get("node") == "agent"
-        for event in events
-    )
+    segments: list[list[TraceEvent]] = []
+    current: list[TraceEvent] = []
+    for event in events:
+        if event.type == "run.started" and current:
+            segments.append(current)
+            current = []
+        current.append(event)
+    if current:
+        segments.append(current)
+
     violations = []
-    if tool_calls > 12:
-        violations.append(f"tool_calls={tool_calls}")
-    if agent_rounds > 6:
-        violations.append(f"agent_rounds={agent_rounds}")
+    for index, segment in enumerate(segments or [list(events)], start=1):
+        tool_calls = len(_event_tools(segment))
+        round_counters = [
+            int(event.payload["rounds"])
+            for event in segment
+            if event.type == "node.completed"
+            and event.payload.get("node") == "agent"
+            and isinstance(event.payload.get("rounds"), int)
+        ]
+        agent_rounds = (
+            max(round_counters)
+            if round_counters
+            else sum(
+                event.type == "node.completed"
+                and event.payload.get("node") == "agent"
+                for event in segment
+            )
+        )
+        if tool_calls > 12:
+            violations.append(f"run_{index}.tool_calls={tool_calls}")
+        if agent_rounds > 6:
+            violations.append(f"run_{index}.agent_rounds={agent_rounds}")
 
     return {
         "id": case["id"],
@@ -200,14 +224,14 @@ def acceptance_passes(summary: dict[str, Any]) -> bool:
 
 def _answer_for_case(
     case: dict[str, Any],
-    profile_payload: dict[str, Any],
+    context_payload: dict[str, Any],
     field: str,
     _: str,
 ) -> str:
-    available = {**profile_payload, **case.get("resume_patch", {})}
+    available = {**context_payload, **case.get("resume_patch", {})}
     if field not in available:
         raise ValueError(
-            f"Eval case {case['id']} lacks profile value for canonical field {field}"
+            f"Eval case {case['id']} lacks context value for canonical field {field}"
         )
     value = available[field]
     return ", ".join(map(str, value)) if isinstance(value, list) else str(value)
@@ -216,15 +240,11 @@ def _answer_for_case(
 async def run_case(
     client: ApiAgentClient, case: dict[str, Any], *, provider: str
 ) -> dict[str, Any]:
-    fixture_name = str(case["profile"])
-    if fixture_name not in PROFILE_FIXTURES:
-        raise ValueError(f"Unknown profile fixture: {fixture_name}")
-    profile_payload = {
-        **PROFILE_FIXTURES[fixture_name],
-        "display_name": f"Eval · {case['id']}",
-    }
-    profile = await client.create_profile(profile_payload)
-    session = await client.create_session(profile["id"], provider=provider)
+    fixture_name = str(case["context_fixture"])
+    if fixture_name not in CONTEXT_FIXTURES:
+        raise ValueError(f"Unknown context fixture: {fixture_name}")
+    context_payload = dict(CONTEXT_FIXTURES[fixture_name])
+    session = await client.create_session(context=context_payload, provider=provider)
     messages = case.get("turns") or [case["query"]]
     all_events: list[TraceEvent] = []
     final_run: dict[str, Any] = {}
@@ -232,17 +252,15 @@ async def run_case(
         final_run, events = await run_chat_turn(
             client,
             session_id=session["id"],
-            profile_id=profile["id"],
             message=str(message),
             answer_provider=lambda field, question: _answer_for_case(
-                case, profile_payload, field, question
+                case, context_payload, field, question
             ),
         )
         all_events.extend(events)
     score = evaluate_case(case, final_run, all_events)
     return {
         **score,
-        "profile_id": profile["id"],
         "session_id": session["id"],
         "run": final_run,
         "events": [asdict(event) for event in all_events],

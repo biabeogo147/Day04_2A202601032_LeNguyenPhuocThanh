@@ -70,6 +70,55 @@ def test_tools_build_grounded_terminal_response_from_canonical_data():
     assert "không phải là thuốc" in answer["disclaimer"].casefold()
 
 
+def test_terminal_submission_keeps_string_rationale_as_one_reason():
+    tools = runtime()
+    candidate = tools.search_product_catalog("Blackmores Fish Oil 1000mg", limit=1)["candidates"][0]
+    product_id = candidate["product_id"]
+    tools.get_product_details([product_id])
+    tools.assess_product_safety([product_id])
+    tools.rank_product_fit([product_id])
+
+    answer = tools.submit_consultation(
+        status="answered",
+        selected_product_ids=[product_id],
+        final_judgment="Thông tin dựa trên nhãn trong dataset.",
+        rationale_by_product={product_id: "Có Omega-3 1000mg và liều 2 viên/ngày."},
+        limitations=[],
+    )
+
+    assert answer["recommendations"][0]["reasons"] == [
+        "Có Omega-3 1000mg và liều 2 viên/ngày."
+    ]
+
+
+def test_terminal_warning_requires_professional_review_when_safety_evidence_is_insufficient():
+    tools = runtime()
+    tools.profile = Profile(
+        age_group=None,
+        goals=None,
+        conditions=None,
+        medications=("warfarin",),
+        allergies=None,
+        pregnancy_status=None,
+        budget_max_vnd=None,
+        preferred_dosage_forms=None,
+    )
+    candidate = tools.search_product_catalog("Omega-3", limit=1)["candidates"][0]
+    product_id = candidate["product_id"]
+    tools.assess_product_safety([product_id])
+    tools.rank_product_fit([product_id])
+
+    answer = tools.submit_consultation(
+        status="warning",
+        selected_product_ids=[],
+        final_judgment="Chưa đủ bằng chứng để chọn sản phẩm.",
+        rationale_by_product={},
+        limitations=["Cần hỏi bác sĩ hoặc dược sĩ."],
+    )
+
+    assert answer["professional_review_required"] is True
+
+
 def test_terminal_submission_rejects_explicit_safety_conflict():
     catalog = Catalog.from_csv(DATASET)
     tools = ToolRuntime(

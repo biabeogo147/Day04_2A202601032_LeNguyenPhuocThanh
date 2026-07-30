@@ -227,9 +227,9 @@ Cách xử lý:
 3. Chạy lại backend.
 4. Gửi một agent run mới.
 
-### `FastAPI trả HTTP 422 cho POST /api/v1/profiles`
+### `FastAPI trả HTTP 422 khi bổ sung context`
 
-Restart CLI để dùng parser profile mới. CLI chấp nhận:
+CLI chấp nhận:
 
 - tuổi dạng số, ví dụ `20`;
 - `không có` cho danh sách trống và trạng thái không mang thai;
@@ -272,16 +272,16 @@ Kiểm tra theo thứ tự:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/profiles
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/sessions
 ```
 
 Nếu các lệnh này thất bại, xử lý backend trước. Nếu chúng thành công, restart
 Vite và mở lại `http://127.0.0.1:5173`.
 
-### Agent yêu cầu bổ sung profile
+### Agent yêu cầu bổ sung ngữ cảnh
 
-Đây là hành vi mong đợi của tool `request_profile_fields`. UI/CLI sẽ PATCH
-profile và resume đúng run/checkpoint; không tạo session mới. Tool luôn phát tên
+Đây là hành vi mong đợi của tool `request_profile_fields`. UI/CLI sẽ merge dữ
+liệu vào `sessions.context` và resume đúng run/checkpoint; không tạo session mới. Tool luôn phát tên
 field canonical, còn CLI chịu trách nhiệm chuyển nhãn/giá trị tiếng Việt về
 schema API.
 

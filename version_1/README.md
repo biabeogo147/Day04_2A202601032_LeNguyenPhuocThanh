@@ -124,16 +124,15 @@ npm run dev
 
 ### Bước 5 — Sử dụng ứng dụng
 
-1. Tạo hoặc chọn profile ở panel bên trái.
-2. Điền nhóm tuổi, mục tiêu, bệnh nền, thuốc, dị ứng, thai/cho con bú, ngân
-   sách và dạng dùng ưa thích.
-3. Nhập câu hỏi trong panel chat.
-4. Nếu agent hiện form yêu cầu thêm hồ sơ, điền form và tiếp tục. Đây là
+1. Nhập câu hỏi ngay trong panel chat; không cần tạo hồ sơ trước.
+2. Agent tra cứu trực tiếp nếu câu hỏi chỉ cần dữ liệu sản phẩm.
+3. Nếu agent hiện form yêu cầu thêm ngữ cảnh, chỉ điền các mục được hỏi. Đây là
    LangGraph interrupt/resume, không phải lỗi.
+4. Ngữ cảnh được lưu trong chính session và dùng lại cho các lượt sau.
 5. Lượt đầu có thể lâu hơn vì OpenAI tạo embedding và Chroma index cho 100 sản
    phẩm.
 
-Khi tạo profile bằng CLI:
+Khi agent hỏi bổ sung ngữ cảnh trong CLI:
 
 - Có thể nhập tuổi dạng số như `20`; CLI tự chuyển thành `adult`.
 - Có thể nhập `không có` cho mục tiêu, bệnh nền, thuốc hoặc dị ứng.
@@ -154,8 +153,8 @@ Backend phải đang chạy ở port 8000. Từ root:
   --api-url http://127.0.0.1:8000
 ```
 
-CLI cho phép chọn/tạo profile, dùng một session nhiều lượt và tự PATCH/resume
-khi graph yêu cầu thêm thông tin. Transcript chỉ lưu typed public events, không
+CLI tạo session rỗng để bạn hỏi ngay, dùng session đó cho nhiều lượt và tự
+merge context/resume khi graph yêu cầu thêm thông tin. Transcript chỉ lưu typed public events, không
 lưu API key hoặc raw chain-of-thought.
 
 ## Eval
@@ -207,18 +206,15 @@ Key chưa nằm đúng file hoặc backend được chạy trước khi key đư
 3. Nhấn `Ctrl+C` ở Terminal 1.
 4. Chạy lại backend.
 
-### `FastAPI trả HTTP 422 cho POST /api/v1/profiles`
+### `FastAPI trả HTTP 422 khi bổ sung context`
 
-Phiên bản hiện tại validate và hỏi lại dữ liệu profile ngay tại CLI. Nếu vẫn
-gặp lỗi này, đảm bảo backend và CLI đều được restart sau khi cập nhật source.
 Các enum canonical của API là:
 
 - `age_group`: `infant`, `child`, `adolescent`, `adult`, `older_adult`;
 - `pregnancy_status`: `not_applicable`, `none`, `pregnant`, `breastfeeding`,
   `prefer_not_to_say`.
 
-CLI cũng chấp nhận tuổi dạng số và các cụm tiếng Việt được liệt kê ở phần sử
-dụng.
+CLI cũng chấp nhận tuổi dạng số và các cụm tiếng Việt được liệt kê ở phần sử dụng.
 
 ### Backend đứng ở `Waiting for application startup`
 

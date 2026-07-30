@@ -4,11 +4,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, delete, func, select, update
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, func, select, update
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.schemas import ProfileCreate, ProfileRead, RunRead, SessionRead, TraceEventRead
+from app.schemas import RunRead, SessionRead, TraceEventRead
 
 
 def utcnow() -> datetime:
@@ -19,28 +19,11 @@ class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 
-class ProfileRecord(Base):
-    __tablename__ = "profiles"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    display_name: Mapped[str] = mapped_column(String(80))
-    age_group: Mapped[str] = mapped_column(String(32))
-    goals: Mapped[list[str]] = mapped_column(JSON, default=list)
-    conditions: Mapped[list[str]] = mapped_column(JSON, default=list)
-    medications: Mapped[list[str]] = mapped_column(JSON, default=list)
-    allergies: Mapped[list[str]] = mapped_column(JSON, default=list)
-    pregnancy_status: Mapped[str] = mapped_column(String(32), default="not_applicable")
-    budget_max_vnd: Mapped[int] = mapped_column(Integer)
-    preferred_dosage_forms: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
 class SessionRecord(Base):
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    profile_id: Mapped[str] = mapped_column(ForeignKey("profiles.id"))
+    context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     version_id: Mapped[str] = mapped_column(String(32))
     provider: Mapped[str] = mapped_column(String(32))
     chat_model: Mapped[str] = mapped_column(String(80))
@@ -108,45 +91,10 @@ class Database:
             await session.commit()
         return int(result.rowcount or 0)
 
-    async def create_profile(self, data: ProfileCreate) -> ProfileRead:
-        record = ProfileRecord(id=str(uuid.uuid4()), **data.model_dump())
-        async with self.sessions() as session:
-            session.add(record)
-            await session.commit()
-        return ProfileRead.model_validate(record)
-
-    async def list_profiles(self) -> list[ProfileRead]:
-        async with self.sessions() as session:
-            records = (await session.scalars(select(ProfileRecord).order_by(ProfileRecord.created_at))).all()
-        return [ProfileRead.model_validate(record) for record in records]
-
-    async def get_profile(self, profile_id: str) -> ProfileRead | None:
-        async with self.sessions() as session:
-            record = await session.get(ProfileRecord, profile_id)
-        return ProfileRead.model_validate(record) if record else None
-
-    async def update_profile(self, profile_id: str, patch: dict[str, Any]) -> ProfileRead:
-        async with self.sessions() as session:
-            record = await session.get(ProfileRecord, profile_id)
-            if record is None:
-                raise KeyError(profile_id)
-            for field, value in patch.items():
-                if value is not None and hasattr(record, field):
-                    setattr(record, field, value)
-            record.updated_at = utcnow()
-            await session.commit()
-        return ProfileRead.model_validate(record)
-
-    async def delete_profile(self, profile_id: str) -> bool:
-        async with self.sessions() as session:
-            result = await session.execute(delete(ProfileRecord).where(ProfileRecord.id == profile_id))
-            await session.commit()
-        return bool(result.rowcount)
-
     async def create_session(
         self,
         *,
-        profile_id: str,
+        context: dict[str, Any] | None = None,
         version_id: str,
         provider: str,
         chat_model: str,
@@ -156,7 +104,7 @@ class Database:
     ) -> SessionRead:
         record = SessionRecord(
             id=str(uuid.uuid4()),
-            profile_id=profile_id,
+            context=dict(context or {}),
             version_id=version_id,
             provider=provider,
             chat_model=chat_model,
@@ -169,15 +117,27 @@ class Database:
             await session.commit()
         return SessionRead.model_validate(record)
 
+    async def update_session_context(
+        self,
+        session_id: str,
+        patch: dict[str, Any],
+    ) -> SessionRead:
+        async with self.sessions() as session:
+            record = await session.get(SessionRecord, session_id)
+            if record is None:
+                raise KeyError(session_id)
+            record.context = {**(record.context or {}), **patch}
+            record.updated_at = utcnow()
+            await session.commit()
+        return SessionRead.model_validate(record)
+
     async def get_session(self, session_id: str) -> SessionRead | None:
         async with self.sessions() as session:
             record = await session.get(SessionRecord, session_id)
         return SessionRead.model_validate(record) if record else None
 
-    async def list_sessions(self, profile_id: str | None = None) -> list[SessionRead]:
+    async def list_sessions(self) -> list[SessionRead]:
         statement = select(SessionRecord).order_by(SessionRecord.created_at)
-        if profile_id is not None:
-            statement = statement.where(SessionRecord.profile_id == profile_id)
         async with self.sessions() as session:
             records = (await session.scalars(statement)).all()
         return [SessionRead.model_validate(record) for record in records]

@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-.DS_Store
-.env
-.env.*
-!.env.example
-arxiv_papers/

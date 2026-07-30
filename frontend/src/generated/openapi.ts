@@ -38,43 +38,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/profiles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Profiles */
-        get: operations["list_profiles_api_v1_profiles_get"];
-        put?: never;
-        /** Create Profile */
-        post: operations["create_profile_api_v1_profiles_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/profiles/{profile_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Profile */
-        get: operations["get_profile_api_v1_profiles__profile_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Profile */
-        delete: operations["delete_profile_api_v1_profiles__profile_id__delete"];
-        options?: never;
-        head?: never;
-        /** Patch Profile */
-        patch: operations["patch_profile_api_v1_profiles__profile_id__patch"];
-        trace?: never;
-    };
     "/api/v1/sessions": {
         parameters: {
             query?: never;
@@ -182,43 +145,8 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /** ProfileCreate */
-        ProfileCreate: {
-            /** Display Name */
-            display_name: string;
-            /**
-             * Age Group
-             * @enum {string}
-             */
-            age_group: "infant" | "child" | "adolescent" | "adult" | "older_adult";
-            /** Goals */
-            goals?: string[];
-            /** Conditions */
-            conditions?: string[];
-            /** Medications */
-            medications?: string[];
-            /** Allergies */
-            allergies?: string[];
-            /**
-             * Pregnancy Status
-             * @default not_applicable
-             * @enum {string}
-             */
-            pregnancy_status: "not_applicable" | "none" | "pregnant" | "breastfeeding" | "prefer_not_to_say";
-            /** Budget Max Vnd */
-            budget_max_vnd: number;
-            /** Preferred Dosage Forms */
-            preferred_dosage_forms?: string[];
-        };
-        /** ProfilePatch */
-        ProfilePatch: {
-            /** Display Name */
-            display_name?: string | null;
+        /** ContextPatch */
+        ContextPatch: {
             /** Age Group */
             age_group?: ("infant" | "child" | "adolescent" | "adult" | "older_adult") | null;
             /** Goals */
@@ -236,49 +164,14 @@ export interface components {
             /** Preferred Dosage Forms */
             preferred_dosage_forms?: string[] | null;
         };
-        /** ProfileRead */
-        ProfileRead: {
-            /** Display Name */
-            display_name: string;
-            /**
-             * Age Group
-             * @enum {string}
-             */
-            age_group: "infant" | "child" | "adolescent" | "adult" | "older_adult";
-            /** Goals */
-            goals?: string[];
-            /** Conditions */
-            conditions?: string[];
-            /** Medications */
-            medications?: string[];
-            /** Allergies */
-            allergies?: string[];
-            /**
-             * Pregnancy Status
-             * @default not_applicable
-             * @enum {string}
-             */
-            pregnancy_status: "not_applicable" | "none" | "pregnant" | "breastfeeding" | "prefer_not_to_say";
-            /** Budget Max Vnd */
-            budget_max_vnd: number;
-            /** Preferred Dosage Forms */
-            preferred_dosage_forms?: string[];
-            /** Id */
-            id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /** ResumeRunRequest */
         ResumeRunRequest: {
-            profile_patch?: components["schemas"]["ProfilePatch"] | null;
+            context_patch?: components["schemas"]["ContextPatch"] | null;
             /** Response */
             response?: {
                 [key: string]: unknown;
@@ -318,8 +211,10 @@ export interface components {
         };
         /** SessionCreate */
         SessionCreate: {
-            /** Profile Id */
-            profile_id: string;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
             /**
              * Version Id
              * @default version_1
@@ -336,8 +231,10 @@ export interface components {
         SessionRead: {
             /** Id */
             id: string;
-            /** Profile Id */
-            profile_id: string;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
             /** Version Id */
             version_id: string;
             /** Provider */
@@ -427,159 +324,9 @@ export interface operations {
             };
         };
     };
-    list_profiles_api_v1_profiles_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileRead"][];
-                };
-            };
-        };
-    };
-    create_profile_api_v1_profiles_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_profile_api_v1_profiles__profile_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                profile_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_profile_api_v1_profiles__profile_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                profile_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_profile_api_v1_profiles__profile_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                profile_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfilePatch"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_sessions_api_v1_sessions_get: {
         parameters: {
-            query?: {
-                profile_id?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -593,15 +340,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -738,7 +476,9 @@ export interface operations {
     };
     run_events_api_v1_runs__run_id__events_get: {
         parameters: {
-            query?: never;
+            query?: {
+                last_event_id?: number;
+            };
             header?: {
                 "Last-Event-ID"?: string | null;
             };

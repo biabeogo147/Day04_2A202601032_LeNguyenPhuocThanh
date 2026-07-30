@@ -16,20 +16,7 @@ PregnancyStatus = Literal[
 ]
 
 
-class ProfileCreate(BaseModel):
-    display_name: str = Field(min_length=1, max_length=80)
-    age_group: AgeGroup
-    goals: list[str] = Field(default_factory=list)
-    conditions: list[str] = Field(default_factory=list)
-    medications: list[str] = Field(default_factory=list)
-    allergies: list[str] = Field(default_factory=list)
-    pregnancy_status: PregnancyStatus = "not_applicable"
-    budget_max_vnd: int = Field(gt=0)
-    preferred_dosage_forms: list[str] = Field(default_factory=list)
-
-
-class ProfilePatch(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=80)
+class ContextPatch(BaseModel):
     age_group: AgeGroup | None = None
     goals: list[str] | None = None
     conditions: list[str] | None = None
@@ -40,16 +27,8 @@ class ProfilePatch(BaseModel):
     preferred_dosage_forms: list[str] | None = None
 
 
-class ProfileRead(ProfileCreate):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    created_at: datetime
-    updated_at: datetime
-
-
 class SessionCreate(BaseModel):
-    profile_id: str
+    context: dict[str, Any] = Field(default_factory=dict)
     version_id: str = "version_1"
     provider: Literal["openai", "gemini"] = "openai"
 
@@ -58,7 +37,7 @@ class SessionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    profile_id: str
+    context: dict[str, Any] = Field(default_factory=dict)
     version_id: str
     provider: str
     chat_model: str
@@ -97,5 +76,5 @@ class TraceEventRead(BaseModel):
 
 
 class ResumeRunRequest(BaseModel):
-    profile_patch: ProfilePatch | None = None
+    context_patch: ContextPatch | None = None
     response: dict[str, Any] = Field(default_factory=dict)

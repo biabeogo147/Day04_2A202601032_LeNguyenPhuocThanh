@@ -87,6 +87,18 @@ def test_fish_allergy_is_an_explicit_conflict_for_fish_oil():
     assert "dị ứng" in " ".join(result.matched_rules).casefold()
 
 
+def test_seafood_allergy_is_an_explicit_conflict_for_fish_oil():
+    product = product_named("Blackmores Fish Oil 1000mg")
+
+    result = assess_product_safety(
+        product,
+        adult_profile(allergies=("hải sản",)),
+    )
+
+    assert result.status == "explicit_conflict"
+    assert result.exclude is True
+
+
 def test_warfarin_maps_to_anticoagulant_contraindication():
     product = next(
         item for item in catalog().products if "chảy máu" in item.contraindications.casefold()
@@ -134,6 +146,36 @@ def test_fit_score_has_explainable_weighted_breakdown():
         "data_completeness": 5.0,
     }
     assert result.safety.status == "no_dataset_conflict_found"
+
+
+def test_unknown_context_is_not_treated_as_negative_fit_or_safe():
+    product = product_named("Blackmores Fish Oil 1000mg")
+    unknown = Profile(
+        age_group=None,
+        goals=None,
+        conditions=None,
+        medications=None,
+        allergies=None,
+        pregnancy_status=None,
+        budget_max_vnd=None,
+        preferred_dosage_forms=None,
+    )
+
+    result = rank_product_fit(
+        product,
+        unknown,
+        semantic_similarity=0.9,
+        requested_nutrients=(),
+    )
+
+    assert result.total == 91.25
+    assert result.breakdown == {
+        "semantic_goal": 31.5,
+        "data_completeness": 5.0,
+    }
+    assert result.safety.status == "insufficient_evidence"
+    assert result.safety.professional_review_required is True
+    assert "Thiếu thông tin hồ sơ" in result.safety.evidence
 
 
 def test_comparison_focuses_on_requested_nutrients_and_keeps_provenance():

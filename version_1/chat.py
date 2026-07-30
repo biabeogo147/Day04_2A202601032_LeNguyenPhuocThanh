@@ -16,10 +16,6 @@ try:
         canonical_profile_field,
         canonical_profile_fields,
         coerce_profile_value,
-        parse_age_group,
-        parse_budget_vnd,
-        parse_list_value,
-        parse_pregnancy_status,
     )
 except ImportError:  # direct: python version_1/chat.py
     from agent import ApiAgentClient, TraceEvent, configure_utf8_console
@@ -27,15 +23,11 @@ except ImportError:  # direct: python version_1/chat.py
         canonical_profile_field,
         canonical_profile_fields,
         coerce_profile_value,
-        parse_age_group,
-        parse_budget_vnd,
-        parse_list_value,
-        parse_pregnancy_status,
     )
 TERMINAL_EVENTS = {"answer.completed", "run.failed"}
 
 
-def coerce_profile_patch(
+def coerce_context_patch(
     fields: list[str], answers: dict[str, str]
 ) -> dict[str, Any]:
     patch: dict[str, Any] = {}
@@ -50,7 +42,6 @@ async def run_chat_turn(
     client: ApiAgentClient,
     *,
     session_id: str,
-    profile_id: str,
     message: str,
     answer_provider: Callable[[str, str], str] = input,
     event_sink: Callable[[TraceEvent], None] | None = None,
@@ -59,6 +50,7 @@ async def run_chat_turn(
     run_id = str(created["id"])
     cursor = 0
     events: list[TraceEvent] = []
+    interrupt_replay_attempted = False
 
     while True:
         interrupted = False
@@ -75,17 +67,18 @@ async def run_chat_turn(
                     if isinstance(raw_fields, list)
                     else []
                 )
-                question = str(event.payload.get("question", "Bổ sung thông tin hồ sơ"))
+                question = str(event.payload.get("question", "Bổ sung thông tin cần thiết"))
                 answers = {
                     field: answer_provider(field, question)
                     for field in fields
                 }
-                patch = coerce_profile_patch(fields, answers)
-                await client.patch_profile(profile_id, patch)
+                patch = coerce_context_patch(fields, answers)
                 await client.resume_run(
                     run_id,
-                    response={"profile_patch": patch},
+                    context_patch=patch,
+                    response={"context_patch": patch},
                 )
+                interrupt_replay_attempted = False
                 interrupted = True
                 break
             if event.type in TERMINAL_EVENTS:
@@ -96,13 +89,15 @@ async def run_chat_turn(
         if terminal or run.get("status") in {"completed", "failed"}:
             return run, events
         if run.get("status") == "interrupted":
+            if not interrupt_replay_attempted:
+                interrupt_replay_attempted = True
+                continue
             raise RuntimeError("Run interrupted without a profile.required event")
 
 
 def write_transcript(
     directory: str | Path,
     *,
-    profile_id: str,
     session_id: str,
     turns: list[dict[str, Any]],
 ) -> Path:
@@ -124,7 +119,6 @@ def write_transcript(
     payload = {
         "version": "version_1",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "profile_id": profile_id,
         "session_id": session_id,
         "turns": serializable_turns,
     }
@@ -133,60 +127,6 @@ def write_transcript(
         encoding="utf-8",
     )
     return target
-
-
-def _new_profile_from_input() -> dict[str, Any]:
-    def prompt_value(prompt: str, parser: Callable[[str], Any], default: str) -> Any:
-        while True:
-            raw = input(prompt).strip() or default
-            try:
-                return parser(raw)
-            except ValueError as exc:
-                print(f"Giá trị không hợp lệ: {exc}")
-
-    def values(prompt: str) -> list[str]:
-        return parse_list_value(input(prompt))
-
-    return {
-        "display_name": input("Tên profile: ").strip() or "CLI user",
-        "age_group": prompt_value(
-            "Tuổi hoặc nhóm tuổi [adult]: ",
-            parse_age_group,
-            "adult",
-        ),
-        "goals": values("Mục tiêu (cách nhau bằng dấu phẩy): "),
-        "conditions": values("Bệnh nền: "),
-        "medications": values("Thuốc đang dùng: "),
-        "allergies": values("Dị ứng: "),
-        "pregnancy_status": prompt_value(
-            "Thai/cho con bú [not_applicable]: ",
-            parse_pregnancy_status,
-            "not_applicable",
-        ),
-        "budget_max_vnd": prompt_value(
-            "Ngân sách tối đa [500000]: ",
-            parse_budget_vnd,
-            "500000",
-        ),
-        "preferred_dosage_forms": values("Dạng bào chế ưu tiên: "),
-    }
-
-
-async def _select_profile(client: ApiAgentClient, profile_id: str | None) -> dict[str, Any]:
-    profiles = await client.list_profiles()
-    if profile_id is not None:
-        for profile in profiles:
-            if profile.get("id") == profile_id:
-                return profile
-        raise ValueError(f"Không tìm thấy profile {profile_id}")
-    if profiles:
-        print("Profiles:")
-        for index, profile in enumerate(profiles, start=1):
-            print(f"  {index}. {profile['display_name']} ({profile['id']})")
-        choice = input("Chọn số profile hoặc Enter để tạo mới: ").strip()
-        if choice:
-            return profiles[int(choice) - 1]
-    return await client.create_profile(_new_profile_from_input())
 
 
 def _print_event(event: TraceEvent) -> None:
@@ -206,9 +146,8 @@ def _print_event(event: TraceEvent) -> None:
 async def async_main(args: argparse.Namespace) -> int:
     turns: list[dict[str, Any]] = []
     async with ApiAgentClient(args.api_url) as client:
-        profile = await _select_profile(client, args.profile_id)
-        session = await client.create_session(profile["id"], provider=args.provider)
-        print("Nhập /exit để kết thúc.")
+        session = await client.create_session(provider=args.provider)
+        print("Hỏi ngay, không cần tạo hồ sơ. Nhập /exit để kết thúc.")
         while True:
             message = input("\nBạn: ").strip()
             if not message:
@@ -218,7 +157,6 @@ async def async_main(args: argparse.Namespace) -> int:
             run, events = await run_chat_turn(
                 client,
                 session_id=session["id"],
-                profile_id=profile["id"],
                 message=message,
                 answer_provider=lambda field, question: input(f"{question} [{field}]: "),
                 event_sink=_print_event,
@@ -229,7 +167,6 @@ async def async_main(args: argparse.Namespace) -> int:
     if turns:
         path = write_transcript(
             Path(__file__).parent / "transcripts",
-            profile_id=profile["id"],
             session_id=session["id"],
             turns=turns,
         )
@@ -242,7 +179,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Version 1 TPCN API chat")
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument("--provider", choices=("openai", "gemini"), default="openai")
-    parser.add_argument("--profile-id")
     return asyncio.run(async_main(parser.parse_args()))
 
 

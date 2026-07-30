@@ -1,4 +1,4 @@
-import type { Profile, ProfileDraft, Run, Session, TraceEvent } from "./types";
+import type { ConversationContext, Run, Session, TraceEvent } from "./types";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -12,29 +12,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  profiles: () => request<Profile[]>("/api/v1/profiles"),
-  createProfile: (payload: ProfileDraft) =>
-    request<Profile>("/api/v1/profiles", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify(payload),
-    }),
-  updateProfile: (id: string, payload: Partial<ProfileDraft>) =>
-    request<Profile>(`/api/v1/profiles/${id}`, {
-      method: "PATCH",
-      headers: jsonHeaders,
-      body: JSON.stringify(payload),
-    }),
-  createSession: (profileId: string) =>
+  createSession: (context: ConversationContext = {}) =>
     request<Session>("/api/v1/sessions", {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify({
-        profile_id: profileId,
+        context,
         version_id: "version_1",
         provider: "openai",
       }),
     }),
+  getSession: (sessionId: string) =>
+    request<Session>(`/api/v1/sessions/${sessionId}`),
   createRun: (sessionId: string, message: string) =>
     request<Run>(`/api/v1/sessions/${sessionId}/runs`, {
       method: "POST",
@@ -44,13 +33,13 @@ export const api = {
   getRun: (runId: string) => request<Run>(`/api/v1/runs/${runId}`),
   resumeRun: (
     runId: string,
-    profilePatch: Partial<ProfileDraft>,
+    contextPatch: ConversationContext,
     response: Record<string, unknown>,
   ) =>
     request<Run>(`/api/v1/runs/${runId}/resume`, {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ profile_patch: profilePatch, response }),
+      body: JSON.stringify({ context_patch: contextPatch, response }),
     }),
 };
 
@@ -59,8 +48,10 @@ export function subscribeToRun(
   onEvent: (event: TraceEvent) => void,
   onTerminal: () => void,
   onError: (error: Event) => void,
+  lastEventId = 0,
 ): () => void {
-  const source = new EventSource(`/api/v1/runs/${runId}/events`);
+  const cursor = lastEventId > 0 ? `?last_event_id=${lastEventId}` : "";
+  const source = new EventSource(`/api/v1/runs/${runId}/events${cursor}`);
   const eventTypes = [
     "run.started",
     "run.resumed",
