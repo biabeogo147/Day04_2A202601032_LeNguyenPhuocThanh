@@ -170,7 +170,8 @@ def assess_product_safety(product: Product, profile: Profile) -> SafetyAssessmen
     limited_evidence = bool(
         profile.conditions
         or profile.medications
-        or profile.pregnancy_status in {"pregnant", "breastfeeding"}
+        or profile.pregnancy_status
+        in {"pregnant", "breastfeeding", "prefer_not_to_say"}
     )
     if limited_evidence:
         return SafetyAssessment(

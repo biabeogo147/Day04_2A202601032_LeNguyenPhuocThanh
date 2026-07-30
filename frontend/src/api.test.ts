@@ -75,4 +75,14 @@ describe("SSE run subscription", () => {
       "/api/v1/runs/run-3/events?last_event_id=7",
     );
   });
+
+  it("closes a broken SSE stream before reporting the transport error", () => {
+    const onError = vi.fn();
+    subscribeToRun("run-4", vi.fn(), vi.fn(), onError);
+
+    FakeEventSource.instance.onerror?.(new Event("error"));
+
+    expect(FakeEventSource.instance.closed).toBe(true);
+    expect(onError).toHaveBeenCalledOnce();
+  });
 });

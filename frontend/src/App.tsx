@@ -561,6 +561,9 @@ export default function App() {
           <div><strong>TPCN Mentor</strong><small>Agent laboratory</small></div>
         </div>
         <div className="dataset-pill"><i /> DataTPCN.csv · 100 sản phẩm</div>
+        <a className="eval-nav-button" href="/eval" aria-label="Mở Eval Lab">
+          Eval Lab <span>↗</span>
+        </a>
         <button className="new-chat-button" onClick={resetConversation} disabled={busy}>
           <span>＋</span> Cuộc trò chuyện mới
         </button>

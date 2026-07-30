@@ -178,6 +178,19 @@ def test_unknown_context_is_not_treated_as_negative_fit_or_safe():
     assert "Thiếu thông tin hồ sơ" in result.safety.evidence
 
 
+def test_prefer_not_to_say_requires_review_without_being_an_explicit_conflict():
+    product = product_named("DHC Vitamin C 60 Days")
+
+    result = assess_product_safety(
+        product,
+        adult_profile(pregnancy_status="prefer_not_to_say"),
+    )
+
+    assert result.status == "insufficient_evidence"
+    assert result.exclude is False
+    assert result.professional_review_required is True
+
+
 def test_comparison_focuses_on_requested_nutrients_and_keeps_provenance():
     first = product_named("Blackmores Fish Oil 1000mg")
     second = next(item for item in catalog().products if any(n.name == "Omega-3" for n in item.nutrients) and item.id != first.id)

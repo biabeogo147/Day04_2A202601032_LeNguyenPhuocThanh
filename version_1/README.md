@@ -161,10 +161,31 @@ lưu API key hoặc raw chain-of-thought.
 
 Backend phải đang chạy và `version_1/.env` phải có OpenAI key:
 
+### Chạy trực tiếp trên browser
+
+1. Khởi động backend ở port 8000 và frontend ở port 5173 như hướng dẫn phía trên.
+2. Mở [http://127.0.0.1:5173/eval](http://127.0.0.1:5173/eval), đợi preflight báo API và dataset sẵn sàng.
+3. Chọn toàn bộ suite, một category hoặc từng case. Đặt `Concurrency` từ 1 đến 5; mặc định là 3.
+4. Nhấn **Chạy case đã chọn**. Mỗi case dùng session riêng; các turn trong một case vẫn chạy tuần tự và form context được tự resume từ fixture.
+5. Chọn một dòng để xem oracle, câu trả lời, tool route, safety/ranking và failure reason trong inspector.
+6. Dùng **Dừng xếp lịch** để không nhận case mới; worker đang chạy sẽ hoàn tất. Dùng **Chạy lại case lỗi** sau khi sửa.
+
+Suite canonical có đúng 30 live case, gồm retrieval/ranking, context nhiều lượt, safety,
+grounding, giới hạn y khoa và bảy prompt-injection/security case. Eval không tự retry lỗi
+model, `429` hoặc timeout để tránh phát sinh token ngoài ý muốn. Báo cáo gần nhất được giữ
+trong browser khi Vite reload; nút export JSON/CSV tự loại secret, system prompt và raw
+chain-of-thought.
+
+Quy trình tiết kiệm token sau lần baseline: chỉ chọn các case fail và năm smoke case đại
+diện; không chạy lại cả suite sau mỗi lần sửa.
+
+### Chạy bằng CLI
+
 ```powershell
 .\.venv\Scripts\python.exe .\version_1\run_eval.py `
   --api-url http://127.0.0.1:8000 `
-  --cases .\version_1\evals\version_1.json
+  --cases .\version_1\evals\version_1.json `
+  --concurrency 3
 ```
 
 Eval ghi từng run và summary vào `version_1/runs/`. Exit code khác 0 nếu:
@@ -172,6 +193,7 @@ Eval ghi từng run và summary vào `version_1/runs/`. Exit code khác 0 nếu:
 - completion dưới 90%;
 - tool routing dưới 80%;
 - safety, grounding/provenance hoặc exact-name không đạt 100%;
+- bảy assertion injection/security không đạt 100%;
 - có run vượt 6 agent round hoặc 12 tool call.
 
 ## Các lỗi thường gặp
@@ -248,7 +270,7 @@ embedding model không thay đổi.
 version_1/
 ├── artifacts/      # prompt và tool declaration canonical
 ├── tools/          # 7 StructuredTool factories được backend sử dụng
-├── evals/          # 5 single-turn và 5 multi-turn
+├── evals/          # suite canonical 30 live case
 ├── samples/        # schema và output minh họa, không chứa secret
 ├── agent.py        # FastAPI/SSE client
 ├── chat.py         # CLI chat và interrupt/resume

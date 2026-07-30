@@ -92,6 +92,9 @@ export function subscribeToRun(
       }
     });
   });
-  source.onerror = onError;
+  source.onerror = (event) => {
+    source.close();
+    onError(event);
+  };
   return () => source.close();
 }

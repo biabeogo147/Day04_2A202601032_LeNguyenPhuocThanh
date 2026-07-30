@@ -119,7 +119,7 @@ def test_terminal_warning_requires_professional_review_when_safety_evidence_is_i
     assert answer["professional_review_required"] is True
 
 
-def test_terminal_submission_rejects_explicit_safety_conflict():
+def test_terminal_submission_excludes_explicit_safety_conflict_without_fallback():
     catalog = Catalog.from_csv(DATASET)
     tools = ToolRuntime(
         catalog,
@@ -140,11 +140,75 @@ def test_terminal_submission_rejects_explicit_safety_conflict():
     tools.assess_product_safety([product_id])
     tools.rank_product_fit([product_id], semantic_scores={product_id: 1.0})
 
-    with pytest.raises(GroundingError, match="xung đột"):
-        tools.submit_consultation(
-            status="answered",
-            selected_product_ids=[product_id],
-            final_judgment="Không hợp lệ.",
-            rationale_by_product={product_id: []},
-            limitations=[],
-        )
+    answer = tools.submit_consultation(
+        status="answered",
+        selected_product_ids=[product_id],
+        final_judgment="Không phù hợp vì có xung đột an toàn rõ ràng.",
+        rationale_by_product={product_id: []},
+        limitations=[],
+    )
+
+    assert answer["status"] == "not_recommended"
+    assert answer["recommendations"] == []
+    assert "Blackmores Fish Oil 1000mg" in answer["limitations"][0]
+    assert answer["dataset_fingerprint"] == catalog.dataset_fingerprint
+
+
+def test_terminal_submission_caps_selection_to_three_ranked_products():
+    tools = runtime()
+    candidates = tools.search_product_catalog("vitamin", limit=4)["candidates"]
+    product_ids = [candidate["product_id"] for candidate in candidates]
+    tools.assess_product_safety(product_ids)
+    tools.rank_product_fit(
+        product_ids,
+        semantic_scores={product_id: 1 - index / 10 for index, product_id in enumerate(product_ids)},
+    )
+
+    answer = tools.submit_consultation(
+        status="answered",
+        selected_product_ids=product_ids,
+        final_judgment="Chọn tối đa ba sản phẩm phù hợp nhất.",
+        rationale_by_product={product_id: ["Ứng viên đã rank"] for product_id in product_ids},
+        limitations=[],
+    )
+
+    assert len(answer["recommendations"]) == 3
+    assert [item["product_id"] for item in answer["recommendations"]] == product_ids[:3]
+
+
+def test_terminal_submission_normalizes_no_product_status():
+    tools = runtime()
+
+    answer = tools.submit_consultation(
+        status="no_product_found",
+        selected_product_ids=[],
+        final_judgment="Không tìm thấy sản phẩm phù hợp trong dataset.",
+        rationale_by_product={},
+        limitations=["Không có candidate thỏa ràng buộc."],
+    )
+
+    assert answer["status"] == "no_match"
+
+
+def test_exact_lookup_without_name_match_cannot_recommend_semantic_alternatives():
+    tools = runtime()
+    candidate = tools.search_product_catalog(
+        "SuperDragon Omega Quantum 9999mg", limit=1
+    )["candidates"][0]
+    product_id = candidate["product_id"]
+    tools.assess_product_safety([product_id])
+    tools.rank_product_fit([product_id])
+    tools.exact_lookup_required = True
+    tools.exact_lookup_match_found = False
+
+    answer = tools.submit_consultation(
+        status="answered",
+        selected_product_ids=[product_id],
+        final_judgment="Đề xuất một sản phẩm gần giống.",
+        rationale_by_product={product_id: ["Semantic candidate"]},
+        limitations=[],
+    )
+
+    assert answer["status"] == "no_match"
+    assert answer["recommendations"] == []
+    assert "không tìm thấy" in answer["final_judgment"].casefold()

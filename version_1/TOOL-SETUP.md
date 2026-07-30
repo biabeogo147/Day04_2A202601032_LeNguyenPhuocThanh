@@ -178,6 +178,7 @@ Mở [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite proxy các request
 
 - FastAPI: `http://127.0.0.1:8000`
 - Vite: `http://127.0.0.1:5173`
+- Eval Lab: `http://127.0.0.1:5173/eval`
 - Dataset: `shared_data/DataTPCN.csv`
 - SQLite: `version_1/storage/app.db`
 - Checkpoint: `version_1/storage/checkpoints.db`
@@ -187,6 +188,24 @@ Mở [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite proxy các request
 
 `storage/`, `runs/`, `transcripts/` và `.env` là runtime state, không được
 commit.
+
+### Eval Lab preflight
+
+Trước khi chạy live eval, kiểm tra backend và browser theo thứ tự:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
+Invoke-WebRequest http://127.0.0.1:5173/eval -UseBasicParsing |
+    Select-Object StatusCode
+```
+
+Health phải có `status=ok`, `product_count=100`; trang eval phải trả HTTP 200. Trên
+`/eval`, chọn concurrency 1–5 (mặc định 3). Mỗi case có session độc lập, không dùng
+profile legacy. Eval không tự retry lỗi OpenAI/timeout/429. Sau khi có baseline, dùng
+**Chạy lại case lỗi** và thêm năm smoke case thay vì chạy lại toàn bộ 30 case.
+
+Nếu SSE bị ngắt, frontend chỉ reconnect/replay từ event ID cuối cùng; thao tác này không
+tạo model run mới. Một worker lỗi không dừng các worker khác.
 
 ## 7. Chẩn đoán lỗi
 

@@ -22,6 +22,7 @@ describe("mentor dashboard", () => {
     expect(screen.queryByRole("complementary", { name: "Hồ sơ tư vấn" })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Hỏi về mục tiêu, thành phần hoặc sản phẩm…")).toBeEnabled();
     expect(screen.getByRole("button", { name: /Cuộc trò chuyện mới/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Mở Eval Lab" })).toHaveAttribute("href", "/eval");
   });
 
   it("fills the composer from a starter question", () => {

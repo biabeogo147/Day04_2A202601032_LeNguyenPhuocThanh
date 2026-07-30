@@ -61,6 +61,8 @@ class ToolRuntime:
         self.safety: dict[str, SafetyAssessment] = {}
         self.ranking: dict[str, FitScore] = {}
         self.context_requests_allowed = True
+        self.exact_lookup_required = False
+        self.exact_lookup_match_found: bool | None = None
 
     def request_profile_fields(self, fields: Sequence[str], question: str) -> dict[str, Any]:
         return {
@@ -79,6 +81,7 @@ class ToolRuntime:
     ) -> dict[str, Any]:
         allowed_forms = {fold_text(item) for item in dosage_forms if item.strip()}
         candidates = []
+        exact_name_match_found = False
         for result in self.retriever.search(query, limit=max(limit * 2, limit)):
             product = result.product
             if max_price_vnd is not None and product.price_vnd > max_price_vnd:
@@ -86,6 +89,10 @@ class ToolRuntime:
             if allowed_forms and fold_text(product.dosage_form) not in allowed_forms:
                 continue
             self.retrieved[product.id] = result.similarity
+            if result.match_type == "exact" or (
+                result.match_type == "lexical" and result.similarity >= 0.9
+            ):
+                exact_name_match_found = True
             candidates.append(
                 {
                     "product_id": product.id,
@@ -99,6 +106,10 @@ class ToolRuntime:
             )
             if len(candidates) >= limit:
                 break
+        if self.exact_lookup_required:
+            self.exact_lookup_match_found = bool(
+                self.exact_lookup_match_found or exact_name_match_found
+            )
         return {
             "query": query,
             "candidate_count": len(candidates),
@@ -183,9 +194,24 @@ class ToolRuntime:
         limitations: Sequence[str],
         follow_up_question: str | None = None,
     ) -> dict[str, Any]:
+        status = {
+            "no_product_found": "no_match",
+            "not_found": "no_match",
+        }.get(status.strip().casefold(), status.strip())
         selected = list(dict.fromkeys(selected_product_ids))
-        if len(selected) > 3:
-            raise GroundingError("Chỉ được chọn tối đa 3 sản phẩm.")
+        exact_lookup_missed = (
+            self.exact_lookup_required and self.exact_lookup_match_found is False
+        )
+        if exact_lookup_missed:
+            status = "no_match"
+            selected = []
+            final_judgment = "Không tìm thấy sản phẩm được yêu cầu trong dataset hiện có."
+            limitations = [
+                *limitations,
+                "Không dùng các semantic candidate gần nghĩa để thay thế một tên sản phẩm không tồn tại.",
+            ]
+        selection_truncated = len(selected) > 3
+        conflicted: list[str] = []
         for product_id in selected:
             if product_id not in self.retrieved:
                 raise GroundingError(f"Sản phẩm {product_id} chưa được retrieve.")
@@ -194,9 +220,24 @@ class ToolRuntime:
             if product_id not in self.ranking:
                 raise GroundingError(f"Sản phẩm {product_id} chưa được rank.")
             if self.safety[product_id].exclude:
-                raise GroundingError(f"Sản phẩm {product_id} có xung đột an toàn rõ ràng.")
+                conflicted.append(product_id)
+        selected = [product_id for product_id in selected if product_id not in conflicted]
+        grounded_limitations = list(limitations)
+        if selection_truncated:
+            selected = selected[:3]
+            grounded_limitations.append(
+                "Chỉ hiển thị tối đa 3 sản phẩm theo thứ tự lựa chọn đã được rank."
+            )
+        for product_id in conflicted:
+            product = self.catalog.get(product_id)
+            grounded_limitations.append(
+                f"Đã loại {product.name} vì {self.safety[product_id].evidence}"
+            )
         if status == "answered" and not selected:
-            raise GroundingError("Câu trả lời tư vấn phải có ít nhất một sản phẩm đã kiểm chứng.")
+            if conflicted:
+                status = "not_recommended"
+            else:
+                raise GroundingError("Câu trả lời tư vấn phải có ít nhất một sản phẩm đã kiểm chứng.")
         if not final_judgment.strip():
             raise GroundingError("Thiếu nhận định cuối cùng.")
 
@@ -224,7 +265,7 @@ class ToolRuntime:
             "status": status,
             "final_judgment": final_judgment.strip(),
             "recommendations": recommendations,
-            "limitations": list(limitations),
+            "limitations": grounded_limitations,
             "follow_up_question": follow_up_question,
             "professional_review_required": professional_review_required,
             "disclaimer": DISCLAIMER,
